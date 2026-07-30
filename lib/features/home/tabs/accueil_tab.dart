@@ -1,41 +1,88 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/models/user_model.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/qr_data.dart';
+import '../../../domain/entities/operation.dart';
+import '../../../domain/entities/recapitulatif.dart';
+import '../../../domain/entities/solde.dart';
+import '../../../domain/entities/utilisateur.dart';
+import '../../../presentation/providers/notification_providers.dart';
+import '../../../presentation/providers/session_provider.dart';
+import '../../../presentation/providers/transaction_providers.dart';
+import '../../../presentation/providers/utilisateur_providers.dart';
 import '../../auth/screens/settings_page.dart';
 
-class AccueilTab extends StatelessWidget {
-  final UserModel user;
-
-  const AccueilTab({super.key, required this.user});
+class AccueilTab extends ConsumerWidget {
+  const AccueilTab({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final utilisateur = ref.watch(utilisateurCourantProvider);
+    final recapitulatif = ref.watch(recapitulatifProvider);
+    final operations = ref.watch(operationsProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _UserHeader(user: user, onSettingsTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const SettingsPage()),
-                );
-              },),
-              const SizedBox(height: 24),
-              // _SoldeCard(user: user),
-              _NetworkCardsSection(user: user),
-              const SizedBox(height: 32),
-              _CotisationTracker(cotisation: user.cotisation),
-              const SizedBox(height: 32),
-              _TransactionsList(transactions: TransactionModel.demoList),
-
-            ],
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(recapitulatifProvider);
+            ref.invalidate(operationsProvider);
+            ref.invalidate(soldeProvider);
+            await ref.read(sessionProvider.notifier).rafraichirUtilisateur();
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _UserHeader(
+                  user: utilisateur,
+                  onSettingsTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const SettingsPage()),
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                ref
+                    .watch(soldeProvider)
+                    .when(
+                      data: (solde) => _SoldeCard(solde: solde),
+                      loading: () => const _BlocChargement(hauteur: 150),
+                      error: (e, _) => _BlocErreur(
+                        message: _messageErreur(e),
+                        onRetry: () => ref.invalidate(soldeProvider),
+                      ),
+                    ),
+                const SizedBox(height: 24),
+                _NetworkCardsSection(user: utilisateur),
+                const SizedBox(height: 32),
+                recapitulatif.when(
+                  data: (recap) => _CotisationTracker(recapitulatif: recap),
+                  loading: () => const _BlocChargement(hauteur: 220),
+                  error: (e, _) => _BlocErreur(
+                    message: _messageErreur(e),
+                    onRetry: () => ref.invalidate(recapitulatifProvider),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                operations.when(
+                  data: (liste) => _TransactionsList(operations: liste),
+                  loading: () => const _BlocChargement(hauteur: 260),
+                  error: (e, _) => _BlocErreur(
+                    message: _messageErreur(e),
+                    onRetry: () => ref.invalidate(operationsProvider),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -43,9 +90,72 @@ class AccueilTab extends StatelessWidget {
   }
 }
 
+String _messageErreur(Object erreur) => erreur is ApiException
+    ? erreur.message
+    : 'Impossible de charger ces données.';
+
+/// Squelette affiché pendant le chargement d'un bloc.
+class _BlocChargement extends StatelessWidget {
+  final double hauteur;
+
+  const _BlocChargement({required this.hauteur});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: hauteur,
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      alignment: Alignment.center,
+      child: const CircularProgressIndicator(strokeWidth: 2.5),
+    );
+  }
+}
+
+/// Erreur de chargement d'un bloc, avec relance.
+class _BlocErreur extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _BlocErreur({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.25)),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          const Icon(Icons.cloud_off_rounded,
+              color: AppColors.error, size: 28),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(onPressed: onRetry, child: const Text('Réessayer')),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Header utilisateur ───────────────────────────────────────────────────────
-class _UserHeader extends StatelessWidget {
-  final UserModel user;
+class _UserHeader extends ConsumerWidget {
+  final Utilisateur? user;
   final VoidCallback onSettingsTap; // Callback pour la redirection
 
   const _UserHeader({
@@ -54,7 +164,7 @@ class _UserHeader extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Row(
       children: [
         // Avatar
@@ -78,7 +188,7 @@ class _UserHeader extends StatelessWidget {
             radius: 26,
             backgroundColor: Colors.transparent,
             child: Text(
-              user.initials,
+              user?.initiales ?? '…',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -94,7 +204,7 @@ class _UserHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                user.fullName,
+                user?.nomComplet ?? 'Chargement…',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
@@ -109,7 +219,7 @@ class _UserHeader extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  user.matricule,
+                  user?.matricule ?? '—',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -140,10 +250,29 @@ class _UserHeader extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.notifications_none_rounded,
-                color: AppColors.textSecondary,
-                size: 20,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(
+                    Icons.notifications_none_rounded,
+                    color: AppColors.textSecondary,
+                    size: 20,
+                  ),
+                  // Pastille des notifications non lues.
+                  if (ref.watch(nombreNotificationsNonLuesProvider) > 0)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        width: 9,
+                        height: 9,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.red,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(width: 10), // Espace entre les deux icônes
@@ -182,8 +311,8 @@ class _UserHeader extends StatelessWidget {
 // ─── Carte solde ─────────────────────────────────────────────────────────────
 
 class _SoldeCard extends StatelessWidget {
-  final UserModel user;
-  const _SoldeCard({required this.user});
+  final Solde solde;
+  const _SoldeCard({required this.solde});
 
   @override
   Widget build(BuildContext context) {
@@ -219,7 +348,7 @@ class _SoldeCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '${fmt.format(user.soldeDisponible)} FCFA',
+            '${fmt.format(solde.disponible)} ${solde.devise}',
             style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w900,
@@ -231,14 +360,14 @@ class _SoldeCard extends StatelessWidget {
           Row(
             children: [
               _SoldeStat(
-                label: 'Reçu ce mois',
-                value: '+${fmt.format(user.totalRecuMois)} FCFA',
+                label: 'Total reçu',
+                value: '+${fmt.format(solde.totalRecu)} ${solde.devise}',
                 color: const Color(0xFF7FFFB2),
               ),
               const SizedBox(width: 24),
               _SoldeStat(
-                label: 'Déduit ce mois',
-                value: '-${fmt.format(user.totalDeduitMois)} FCFA',
+                label: 'Total prélevé',
+                value: '-${fmt.format(solde.totalPreleve)} ${solde.devise}',
                 color: Colors.white54,
               ),
             ],
@@ -271,8 +400,21 @@ class _SoldeStat extends StatelessWidget {
 // ─── Liste des transactions ───────────────────────────────────────────────────
 
 class _TransactionsList extends StatelessWidget {
-  final List<TransactionModel> transactions;
-  const _TransactionsList({required this.transactions});
+  final List<Operation> operations;
+  const _TransactionsList({required this.operations});
+
+  /// Pictogramme déduit du type d'opération renvoyé par l'API.
+  static String _icone(Operation op) {
+    final type = (op.type ?? op.libelle).toUpperCase();
+    if (type.contains('CNPS')) return '🏛️';
+    if (type.contains('CMU') || type.contains('AMU') || type.contains('SANTE')) {
+      return '🏥';
+    }
+    if (type.contains('EPARGNE')) return '🏠';
+    if (type.contains('MOBILE') || type.contains('VIREMENT')) return '📲';
+    if (type.contains('COTISATION') || type.contains('PRELEV')) return '🧾';
+    return op.estCredit ? '💰' : '🏦';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -303,17 +445,38 @@ class _TransactionsList extends StatelessWidget {
               ),
             ],
           ),
-          child: ListView.separated(
+          child: operations.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+                  child: Column(
+                    children: [
+                      Icon(Icons.receipt_long_outlined,
+                          color: AppColors.textHint, size: 32),
+                      SizedBox(height: 10),
+                      Text(
+                        'Aucune opération pour le moment.\nVos encaissements et prélèvements '
+                        'apparaîtront ici.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.textSecondary,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: transactions.length,
+            itemCount: operations.length,
             separatorBuilder: (_, __) => const Divider(
               height: 1,
               thickness: 1,
               color: AppColors.border,
             ),
             itemBuilder: (_, i) {
-              final tx = transactions[i];
+              final tx = operations[i];
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 child: Row(
@@ -329,7 +492,8 @@ class _TransactionsList extends StatelessWidget {
                         shape: BoxShape.circle,
                       ),
                       child: Center(
-                        child: Text(tx.icone, style: const TextStyle(fontSize: 18)),
+                        child: Text(_icone(tx),
+                            style: const TextStyle(fontSize: 18)),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -346,23 +510,25 @@ class _TransactionsList extends StatelessWidget {
                               color: AppColors.textPrimary,
                             ),
                           ),
-                          const SizedBox(height: 3),
-                          Text(
-                            tx.estCredit
-                                ? 'De : ${tx.description}'
-                                : tx.description,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: tx.estCredit
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                              color: tx.estCredit
-                                  ? AppColors.primaryBlue
-                                  : AppColors.textSecondary,
+                          if (tx.description != null) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              tx.estCredit
+                                  ? 'De : ${tx.description}'
+                                  : tx.description!,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: tx.estCredit
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: tx.estCredit
+                                    ? AppColors.primaryBlue
+                                    : AppColors.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          ],
                           const SizedBox(height: 3),
                           Text(
                             dateFmt.format(tx.date),
@@ -448,7 +614,7 @@ const _networks = [
 
 
 class _NetworkCardsSection extends StatefulWidget {
-  final UserModel user;
+  final Utilisateur? user;
   const _NetworkCardsSection({required this.user});
 
   @override
@@ -486,8 +652,8 @@ class _NetworkCardsSectionState extends State<_NetworkCardsSection> {
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: _NetworkCard(
                     network: net,
-                    telephone: widget.user.telephone,
-                    cnpsNumero: widget.user.cnpsNumero,
+                    telephone: widget.user?.telephone ?? '',
+                    cnpsNumero: widget.user?.numeroCnps ?? '',
                   ),
                 ),
               );
@@ -924,9 +1090,9 @@ class _Circle extends StatelessWidget {
 // ─── Suivi cotisations ────────────────────────────────────────────────────────
 
 class _CotisationTracker extends StatefulWidget {
-  final CotisationModel cotisation;
+  final Recapitulatif recapitulatif;
 
-  const _CotisationTracker({required this.cotisation});
+  const _CotisationTracker({required this.recapitulatif});
 
   @override
   State<_CotisationTracker> createState() => _CotisationTrackerState();
@@ -943,12 +1109,12 @@ class _CotisationTrackerState extends State<_CotisationTracker> {
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0', 'fr_FR');
-    final c = widget.cotisation;
+    final c = widget.recapitulatif;
     final isMois = _tab == 0;
 
-    final verse    = isMois ? c.mensuelVerse    : c.annuelVerse;
-    final cible    = isMois ? c.mensuelCible    : c.annuelCible;
-    final progress = isMois ? c.progressMensuel : c.progressAnnuel;
+    final verse    = isMois ? c.totalVerseMensuel : c.totalVerseAnnuel;
+    final cible    = isMois ? c.totalCibleMensuel : c.totalCibleAnnuel;
+    final progress = isMois ? c.progressionMensuelle : c.progressionAnnuelle;
     final color    = isMois ? AppColors.primaryBlue : AppColors.purple;
     final icon     = isMois ? '📅' : '📆';
     final titre    = isMois

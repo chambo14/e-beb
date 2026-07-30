@@ -1,29 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../home/screens/home_screen.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../domain/entities/demande_inscription.dart';
+import '../../../presentation/providers/auth_controller.dart';
+import 'otp_screen.dart';
 
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   final String phoneNumber;
 
   const RegisterScreen({super.key, required this.phoneNumber});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _scrollController = ScrollController();
+  final _picker = ImagePicker();
   int _currentStep = 0; // 0=Identification, 1=Pièces, 2=Finalisation
 
   // ── Étape 1 : Identité ─────────────────────────────────────────────────────
   final _cnamController = TextEditingController();
+  final _cnpsController = TextEditingController();
   final _nomController = TextEditingController();
   final _prenomsController = TextEditingController();
+  final _lieuNaissanceController = TextEditingController();
+  final _telephoneController = TextEditingController();
   String? _genre;
   String? _situationMatrimoniale;
   DateTime? _dateNaissance;
+
+  // ── Étape 1 : Pièce d'identité ──────────────────────────────────────────────
+  String? _typeDocument;
+  final _numeroDocumentController = TextEditingController();
+  DateTime? _documentEtablieLe;
+  DateTime? _documentExpireLe;
 
   // ── Étape 1 : Déclaration du revenu ─────────────────────────────────────────
   final _revenuController = TextEditingController();
@@ -44,12 +59,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
 
   // ── Étape 2 : Pièces ─────────────────────────────────────────────────────
-  String? _photoFileName;
-  String? _idRectoFileName;
-  String? _idVersoFileName;
+  XFile? _selfie;
+  XFile? _idRecto;
+  XFile? _idVerso;
   bool _infosConfirmees = false;
 
-  bool _isLoading = false;
+  /// Valeurs envoyées à l'API (le libellé affiché reste en majuscules accentuées).
+  static const _sexeApi = {'MASCULIN': 'HOMME', 'FÉMININ': 'FEMME'};
+  static const _situationApi = {
+    'CÉLIBATAIRE': 'celibataire',
+    'MARIÉ(E)': 'marie',
+    'DIVORCÉ(E)': 'divorce',
+    'SÉPARÉ(E)': 'separe',
+    'VEUF / VEUVE': 'veuf',
+  };
 
   static const _genreOptions = ['MASCULIN', 'FÉMININ'];
   static const _situationOptions = [
@@ -58,6 +81,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     'DIVORCÉ(E)',
     'SÉPARÉ(E)',
     'VEUF / VEUVE',
+  ];
+  static const _typeDocumentOptions = [
+    'CNI',
+    'PASSEPORT',
+    'PERMIS DE CONDUIRE',
+    'ATTESTATION D\'IDENTITE',
   ];
   static const _categorieOptions = [
     'ARTISAN',
@@ -74,13 +103,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void initState() {
     super.initState();
     _revenuController.addListener(_onRevenuChanged);
+    _telephoneController.text = widget.phoneNumber;
   }
 
   @override
   void dispose() {
     _cnamController.dispose();
+    _cnpsController.dispose();
     _nomController.dispose();
     _prenomsController.dispose();
+    _lieuNaissanceController.dispose();
+    _telephoneController.dispose();
+    _numeroDocumentController.dispose();
     _revenuController.dispose();
     _activiteController.dispose();
     _villeProController.dispose();
@@ -108,13 +142,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _formatF(double v) =>
       '${NumberFormat('#,##0', 'fr_FR').format(v)} F CFA';
 
-  Future<void> _pickDate({required bool isNaissance}) async {
+  Future<void> _pickDate(_ChampDate champ) async {
     final now = DateTime.now();
-    final initial = isNaissance ? DateTime(1990) : DateTime(now.year - 5);
-    final first = isNaissance ? DateTime(1920) : DateTime(1970);
-    final last = isNaissance
-        ? now.subtract(const Duration(days: 365 * 18))
-        : now;
+    final (initial, first, last) = switch (champ) {
+      _ChampDate.naissance => (
+        _dateNaissance ?? DateTime(1990),
+        DateTime(1920),
+        now.subtract(const Duration(days: 365 * 18)),
+      ),
+      _ChampDate.debutActivite => (
+        _dateDebutActivite ?? DateTime(now.year - 5),
+        DateTime(1970),
+        now,
+      ),
+      _ChampDate.documentEtabli => (
+        _documentEtablieLe ?? DateTime(now.year - 2),
+        DateTime(1970),
+        now,
+      ),
+      // Une pièce d'identité expire nécessairement dans le futur.
+      _ChampDate.documentExpire => (
+        _documentExpireLe ?? DateTime(now.year + 5),
+        now,
+        DateTime(now.year + 30),
+      ),
+    };
 
     final picked = await showDatePicker(
       context: context,
@@ -135,56 +187,124 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
     if (picked == null) return;
     setState(() {
-      if (isNaissance) {
-        _dateNaissance = picked;
-      } else {
-        _dateDebutActivite = picked;
+      switch (champ) {
+        case _ChampDate.naissance:
+          _dateNaissance = picked;
+        case _ChampDate.debutActivite:
+          _dateDebutActivite = picked;
+        case _ChampDate.documentEtabli:
+          _documentEtablieLe = picked;
+        case _ChampDate.documentExpire:
+          _documentExpireLe = picked;
       }
     });
   }
 
-  bool _validateStep0() {
-    if (_nomController.text.trim().isEmpty) return false;
-    if (_prenomsController.text.trim().isEmpty) return false;
-    if (_genre == null) return false;
-    if (_situationMatrimoniale == null) return false;
-    if (_dateNaissance == null) return false;
-    if (_revenuController.text.trim().isEmpty) return false;
-    if (_categorieSocioPro == null) return false;
-    if (_activiteController.text.trim().isEmpty) return false;
-    if (_villeProController.text.trim().isEmpty) return false;
-    if (_quartierProController.text.trim().isEmpty) return false;
-    if (_communeProController.text.trim().isEmpty) return false;
-    if (_villeController.text.trim().isEmpty) return false;
-    if (_communeController.text.trim().isEmpty) return false;
-    if (_quartierController.text.trim().isEmpty) return false;
-    return true;
+  /// Importe une photo depuis la galerie ou l'appareil photo.
+  Future<void> _choisirImage(_ChampFichier champ) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Prendre une photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Choisir dans la galerie'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    // L'API n'accepte que des images ; on limite la taille pour l'upload.
+    final fichier = await _picker.pickImage(
+      source: source,
+      maxWidth: 1600,
+      imageQuality: 85,
+    );
+    if (fichier == null || !mounted) return;
+
+    setState(() {
+      switch (champ) {
+        case _ChampFichier.selfie:
+          _selfie = fichier;
+        case _ChampFichier.recto:
+          _idRecto = fichier;
+        case _ChampFichier.verso:
+          _idVerso = fichier;
+      }
+    });
+  }
+
+  /// Premier champ obligatoire non renseigné de l'étape 0, `null` si complète.
+  String? _champManquantEtape0() {
+    if (_nomController.text.trim().isEmpty) return 'le nom';
+    if (_prenomsController.text.trim().isEmpty) return 'les prénoms';
+    if (_situationMatrimoniale == null) return 'la situation matrimoniale';
+    if (_dateNaissance == null) return 'la date de naissance';
+    if (_revenuController.text.trim().isEmpty) return 'le revenu mensuel';
+    if (_categorieSocioPro == null) return 'la catégorie socioprofessionnelle';
+    if (_activiteController.text.trim().isEmpty) return 'l\'activité exercée';
+    if (_dateDebutActivite == null) return 'la date de début d\'activité';
+    if (_villeProController.text.trim().isEmpty) return 'la ville d\'activité';
+    if (_quartierProController.text.trim().isEmpty) {
+      return 'le quartier d\'activité';
+    }
+    if (_communeProController.text.trim().isEmpty) {
+      return 'la commune d\'activité';
+    }
+    if (_villeController.text.trim().isEmpty) return 'la ville de résidence';
+    if (_communeController.text.trim().isEmpty) return 'la commune';
+    if (_quartierController.text.trim().isEmpty) return 'le quartier';
+    if (_telephoneController.text.replaceAll(RegExp(r'\D'), '').length < 10) {
+      return 'un numéro de téléphone à 10 chiffres';
+    }
+    if (!_emailValide) return 'une adresse e-mail valide';
+    if (_typeDocument == null) return 'le type de pièce d\'identité';
+    if (_numeroDocumentController.text.trim().isEmpty) {
+      return 'le numéro de la pièce';
+    }
+    if (_documentEtablieLe == null) return 'la date d\'établissement de la pièce';
+    if (_documentExpireLe == null) return 'la date d\'expiration de la pièce';
+    return null;
+  }
+
+  bool get _emailValide {
+    final email = _emailController.text.trim();
+    return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
   }
 
   void _next() {
     if (_currentStep == 0) {
-      if (!_validateStep0()) {
-        _showError('Veuillez remplir tous les champs obligatoires (*).');
+      final manquant = _champManquantEtape0();
+      if (manquant != null) {
+        _showError('Veuillez renseigner $manquant.');
         return;
       }
       setState(() => _currentStep = 1);
       _scrollController.animateTo(0,
           duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-    } else if (_currentStep == 1) {
-      if (_photoFileName == null || _idRectoFileName == null || _idVersoFileName == null) {
-        _showError('Veuillez importer tous les documents requis.');
-        return;
-      }
-      if (!_infosConfirmees) {
-        _showError('Veuillez confirmer que les informations sont correctes.');
-        return;
-      }
-      setState(() => _currentStep = 2);
-      _scrollController.animateTo(0,
-          duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-    } else {
-      _submit();
+      return;
     }
+
+    // Étape 2 : pièces, récapitulatif et soumission.
+    if (_selfie == null || _idRecto == null || _idVerso == null) {
+      _showError('Veuillez importer tous les documents requis.');
+      return;
+    }
+    if (!_infosConfirmees) {
+      _showError('Veuillez confirmer que les informations sont correctes.');
+      return;
+    }
+    _submit();
   }
 
   void _prev() {
@@ -206,11 +326,65 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ));
   }
 
+  /// Construit le payload attendu par `POST /auth/inscription`.
+  DemandeInscription _construireDemande() {
+    final telephone = Formatters.telephoneApi(_telephoneController.text);
+    return DemandeInscription(
+      nom: _nomController.text.trim(),
+      prenom: _prenomsController.text.trim(),
+      telephone: telephone,
+      email: _emailController.text.trim(),
+      dateNaissance: _dateNaissance!,
+      situationFamiliale: _situationApi[_situationMatrimoniale] ?? 'celibataire',
+      sexe: _genre == null ? null : _sexeApi[_genre],
+      lieuNaissance: _texteOuNull(_lieuNaissanceController),
+      numeroCnps: _texteOuNull(_cnpsController),
+      numeroCmu: _texteOuNull(_cnamController),
+      ville: _villeController.text.trim(),
+      quartier: _quartierController.text.trim(),
+      adressePostale: _texteOuNull(_boitePostaleController),
+      metier: _activiteController.text.trim(),
+      profession: _activiteController.text.trim(),
+      categorieProfessionnelle: _categorieSocioPro!,
+      montantRevenu: _revenuMensuel,
+      dateDebutActivite: _dateDebutActivite!,
+      villeActivite: _villeProController.text.trim(),
+      quartierActivite: _quartierProController.text.trim(),
+      communeSousPrefectureActivite: _communeProController.text.trim(),
+      typeDocument: _typeDocument!,
+      numeroDocument: _numeroDocumentController.text.trim(),
+      documentEtablieLe: _documentEtablieLe!,
+      documentExpireLe: _documentExpireLe!,
+      cheminRecto: _idRecto!.path,
+      cheminVerso: _idVerso!.path,
+      cheminSelfie: _selfie!.path,
+      montantCotisationRegimeBase: _cotisationBase,
+      montantCotisationRegimeComplementaire: _cotisationComplementaire,
+      montantCotisationMensuelle: _cotisationMensuelle,
+      montantCotisationTrimestrielle: _cotisationTrimestrielle,
+    );
+  }
+
+  String? _texteOuNull(TextEditingController c) {
+    final valeur = c.text.trim();
+    return valeur.isEmpty ? null : valeur;
+  }
+
   Future<void> _submit() async {
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 2000));
+    final succes = await ref
+        .read(authControllerProvider.notifier)
+        .inscrire(_construireDemande());
+
     if (!mounted) return;
-    setState(() => _isLoading = false);
+
+    if (!succes) {
+      _showError(
+        ref.read(messageErreurAuthProvider) ??
+            'L\'inscription n\'a pas abouti.',
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -246,15 +420,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     color: AppColors.textPrimary)),
             const SizedBox(height: 10),
             Text(
-              'Bienvenue ${_prenomsController.text} ${_nomController.text} !\nVotre compte E-BEB SALARY a été créé avec succès.',
+              'Bienvenue ${_prenomsController.text} ${_nomController.text} !\nVotre dossier Ebeb Finance a bien été enregistré.',
               textAlign: TextAlign.center,
               style: const TextStyle(
                   fontSize: 14, color: AppColors.textSecondary, height: 1.5),
             ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primaryBlue.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'Un code de vérification à 6 chiffres vient d\'être envoyé au '
+                '${Formatters.telephoneApi(_telephoneController.text)}.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.textSecondary,
+                    height: 1.5),
+              ),
+            ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () => Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const HomeScreen()),
+                MaterialPageRoute(
+                  builder: (_) => OtpScreen(
+                    phoneNumber: _telephoneController.text,
+                    mode: ModeOtp.inscription,
+                    prenom: _prenomsController.text.trim(),
+                  ),
+                ),
                 (route) => false,
               ),
               style: ElevatedButton.styleFrom(
@@ -262,7 +459,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Accéder à mon compte'),
+              child: const Text('Vérifier mon numéro'),
             ),
           ],
         ),
@@ -306,11 +503,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Column(
                 children: [
-                  if (_currentStep == 0) _buildStep0(),
-                  if (_currentStep == 1) _buildStep1(),
-                  if (_currentStep == 2) _buildStep2(),
+                  if (_currentStep == 0) _buildStep0() else _buildStep1(),
                   const SizedBox(height: 20),
                   _buildNavButton(),
+                  if (_currentStep > 0) ...[
+                    const SizedBox(height: 10),
+                    _buildRetourButton(),
+                  ],
                   const SizedBox(height: 32),
                 ],
               ),
@@ -324,12 +523,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // ── Indicateur d'étapes ───────────────────────────────────────────────────
 
   Widget _buildStepIndicator() {
-    const labels = ['Identification', 'Pièces', 'Finalisation'];
+    const labels = ['Identification', 'Pièces & validation'];
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
-        children: List.generate(5, (i) {
+        // Un rond par étape, une ligne de liaison entre deux ronds.
+        children: List.generate(labels.length * 2 - 1, (i) {
           if (i.isEven) {
             final step = i ~/ 2;
             final isDone = step < _currentStep;
@@ -407,8 +607,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           title: 'IDENTITE DU TRAVAILLEUR',
           color: const Color(0xFF1A3A6B),
           children: [
-            _cnpsField('N° CNAM', _cnamController,
-                hint: '123', required: false),
+            _cnpsField('N° CNAM / CMU', _cnamController,
+                hint: '09876543219', required: false),
+            _divider(),
+            _cnpsField('N° CNPS', _cnpsController,
+                hint: '00345678901', required: false),
             _divider(),
             _cnpsField('NOM', _nomController,
                 caps: TextCapitalization.characters),
@@ -426,7 +629,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 (v) => setState(() => _situationMatrimoniale = v)),
             _divider(),
             _dateField('DATE DE NAISSANCE', _dateNaissance,
-                () => _pickDate(isNaissance: true)),
+                () => _pickDate(_ChampDate.naissance)),
+            _divider(),
+            _cnpsField('LIEU DE NAISSANCE', _lieuNaissanceController,
+                hint: 'EX: ADZOPÉ',
+                required: false,
+                caps: TextCapitalization.characters),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _sectionCard(
+          title: 'PIÈCE D\'IDENTITÉ',
+          color: const Color(0xFF6B35A8),
+          children: [
+            _dropdownField('TYPE DE DOCUMENT', _typeDocumentOptions,
+                _typeDocument, (v) => setState(() => _typeDocument = v)),
+            _divider(),
+            _cnpsField('NUMÉRO DU DOCUMENT', _numeroDocumentController,
+                hint: 'EX: CI1234567890',
+                caps: TextCapitalization.characters),
+            _divider(),
+            _dateField('ÉTABLIE LE', _documentEtablieLe,
+                () => _pickDate(_ChampDate.documentEtabli)),
+            _divider(),
+            _dateField('EXPIRE LE', _documentExpireLe,
+                () => _pickDate(_ChampDate.documentExpire)),
           ],
         ),
         const SizedBox(height: 16),
@@ -462,8 +689,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 hint: 'ACTIVITE'),
             _divider(),
             _dateField('DATE DE DEBUT D\'ACTIVITE', _dateDebutActivite,
-                () => _pickDate(isNaissance: false),
-                required: false),
+                () => _pickDate(_ChampDate.debutActivite)),
             _divider(),
             _cnpsField('VILLE', _villeProController,
                 hint: 'EX: ABIDJAN',
@@ -498,40 +724,55 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _cnpsField('BOITE POSTALE', _boitePostaleController,
                 hint: 'BOITE POSTALE', required: false),
             _divider(),
-            // Téléphone pré-rempli
+            // Téléphone : pré-rempli depuis l'écran précédent, modifiable si
+            // l'inscription est lancée directement depuis l'accueil.
             _labeledWidget(
               'TELEPHONE',
               required: true,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF2FB),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFFBBD6F5)),
+              child: TextField(
+                controller: _telephoneController,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(10),
+                ],
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
                 ),
-                child: Row(
-                  children: [
-                    const Text('🇨🇮 +225 ',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary)),
-                    Text(
-                      widget.phoneNumber,
-                      style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary),
-                    ),
-                  ],
+                decoration: InputDecoration(
+                  prefixText: '🇨🇮 +225  ',
+                  prefixStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary),
+                  hintText: '0700000000',
+                  hintStyle:
+                      const TextStyle(color: Color(0xFFAAAAAA), fontSize: 13),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(color: Color(0xFFCCCCCC)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(color: Color(0xFFCCCCCC)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(
+                        color: AppColors.primaryBlue, width: 1.5),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
                 ),
               ),
             ),
             _divider(),
             _cnpsField('EMAIL', _emailController,
-                hint: 'EMAIL',
-                required: false,
+                hint: 'exemple@mail.com',
                 keyboardType: TextInputType.emailAddress),
           ],
         ),
@@ -583,27 +824,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
               // IMPORTEZ VOTRE PHOTO
               _fileUploadField(
                 label: 'IMPORTEZ VOTRE PHOTO',
-                fileName: _photoFileName,
-                onTap: () =>
-                    setState(() => _photoFileName = 'photo_identite.jpg'),
+                fichier: _selfie,
+                onTap: () => _choisirImage(_ChampFichier.selfie),
               ),
               const SizedBox(height: 16),
 
               // Document d'identité recto
               _fileUploadField(
                 label: 'Document d\'identité recto',
-                fileName: _idRectoFileName,
-                onTap: () =>
-                    setState(() => _idRectoFileName = 'cni_recto.jpg'),
+                fichier: _idRecto,
+                onTap: () => _choisirImage(_ChampFichier.recto),
               ),
               const SizedBox(height: 16),
 
               // Document d'identité verso
               _fileUploadField(
                 label: 'Document d\'identité verso',
-                fileName: _idVersoFileName,
-                onTap: () =>
-                    setState(() => _idVersoFileName = 'cni_verso.jpg'),
+                fichier: _idVerso,
+                onTap: () => _choisirImage(_ChampFichier.verso),
               ),
             ],
           ),
@@ -643,40 +881,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
 
-        // Bouton RETOUR
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _prev,
-            icon: const Icon(Icons.keyboard_double_arrow_left_rounded,
-                color: Colors.white, size: 18),
-            label: const Text(
-              'RETOUR',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.5,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1A3A6B),
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6)),
-              elevation: 0,
-            ),
-          ),
-        ),
+        // Récapitulatif avant soumission
+        _buildRecapitulatif(),
+
       ],
     );
   }
 
   Widget _fileUploadField({
     required String label,
-    required String? fileName,
+    required XFile? fichier,
     required VoidCallback onTap,
   }) {
     return Column(
@@ -713,11 +929,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ),
             ),
-            if (fileName != null) ...[
+            if (fichier != null) ...[
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  fileName,
+                  fichier.name,
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF22C55E),
@@ -743,9 +959,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ── Étape 2 : Finalisation ────────────────────────────────────────────────
+  // ── Récapitulatif (affiché en bas de l'étape 2, avant soumission) ─────────
 
-  Widget _buildStep2() {
+  Widget _buildRecapitulatif() {
     final dateFmt = DateFormat('dd/MM/yyyy');
     return Column(
       children: [
@@ -768,7 +984,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _recapRow('COTISATION MENSUELLE',
                 _revenuMensuel > 0 ? _formatF(_cotisationMensuelle) : '-'),
             _recapRow('ACTIVITÉ', _activiteController.text),
-            _recapRow('TÉLÉPHONE', '+225 ${widget.phoneNumber}'),
+            _recapRow('PIÈCE D\'IDENTITÉ',
+                '${_typeDocument ?? '-'} · ${_numeroDocumentController.text}'),
+            _recapRow('EMAIL', _emailController.text),
+            _recapRow(
+                'TÉLÉPHONE', Formatters.telephoneApi(_telephoneController.text)),
           ],
         ),
         const SizedBox(height: 16),
@@ -832,15 +1052,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   // ── Bouton de navigation ──────────────────────────────────────────────────
 
-  Widget _buildNavButton() {
-    // L'étape 2 gère ses propres boutons dans _buildStep1()
-    if (_currentStep == 1) return const SizedBox.shrink();
+  /// Retour à l'étape précédente — action secondaire, sous le bouton principal.
+  Widget _buildRetourButton() {
+    final enCours = ref.watch(authControllerProvider).isLoading;
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: enCours ? null : _prev,
+        icon: const Icon(Icons.keyboard_double_arrow_left_rounded,
+            color: Color(0xFF1A3A6B), size: 18),
+        label: const Text(
+          'RETOUR',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF1A3A6B),
+            letterSpacing: 0.5,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Color(0xFF1A3A6B), width: 1.5),
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        ),
+      ),
+    );
+  }
 
-    final labels = ['INFORMATIONS SUIVANTES', '', 'SOUMETTRE'];
+  Widget _buildNavButton() {
+    final enCours = ref.watch(authControllerProvider).isLoading;
+    const labels = ['INFORMATIONS SUIVANTES', 'SOUMETTRE MON INSCRIPTION'];
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _isLoading ? null : _next,
+        onPressed: enCours ? null : _next,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFE07B20),
           foregroundColor: Colors.white,
@@ -849,7 +1095,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           elevation: 0,
         ),
-        child: _isLoading
+        child: enCours
             ? const SizedBox(
                 width: 22,
                 height: 22,
@@ -1164,3 +1410,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 }
+
+/// Champs date du formulaire, chacun avec sa plage autorisée.
+enum _ChampDate { naissance, debutActivite, documentEtabli, documentExpire }
+
+/// Pièces jointes attendues par `POST /auth/inscription`.
+enum _ChampFichier { selfie, recto, verso }

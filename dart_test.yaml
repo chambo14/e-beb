@@ -1,0 +1,4 @@
+tags:
+  # Tests qui sortent sur le réseau (API ebebfinance.com).
+  # Pour les exclure : flutter test --exclude-tags reseau
+  reseau:

@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../presentation/providers/session_provider.dart';
+import '../../home/screens/home_screen.dart';
 import '../../onboarding/onboarding_screen.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends ConsumerState<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
-  late Animation<double> _slideAnim;
 
   @override
   void initState() {
@@ -37,28 +40,32 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       ),
     );
 
-    _slideAnim = Tween<double>(begin: 30, end: 0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+    _controller.forward();
+    _demarrer();
+  }
+
+  /// Restaure la session persistée pendant que l'animation se joue, puis
+  /// route vers l'accueil si le jeton est encore valide.
+  Future<void> _demarrer() async {
+    final restauration = ref.read(sessionProvider.notifier).restaurer();
+    final animation = Future<void>.delayed(
+      const Duration(milliseconds: 2800),
+    );
+    await Future.wait([restauration, animation]);
+
+    if (!mounted) return;
+
+    final estAuthentifie = ref.read(sessionProvider).estAuthentifie;
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) =>
+            estAuthentifie ? const HomeScreen() : const OnboardingScreen(),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 500),
       ),
     );
-
-    _controller.forward();
-
-    Future.delayed(const Duration(milliseconds: 2800), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const OnboardingScreen(),
-            transitionsBuilder: (_, animation, __, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            transitionDuration: const Duration(milliseconds: 500),
-          ),
-        );
-      }
-    });
   }
 
   @override
@@ -118,7 +125,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                       scale: _scaleAnim.value,
                       child: Opacity(
                         opacity: _fadeAnim.value,
-                        child: Image.asset("assets/ebeb.jpeg"),
+                        child: Image.asset("assets/logo.jpeg"),
                       ),
                     ),
                     const SizedBox(height: 28),

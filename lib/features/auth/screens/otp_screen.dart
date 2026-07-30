@@ -1,35 +1,52 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../presentation/providers/auth_controller.dart';
 import '../../home/screens/home_screen.dart';
+import 'pin_setup_screen.dart';
 
-class OtpScreen extends StatefulWidget {
+/// Parcours dont provient l'écran : le code OTP est validé par deux routes
+/// différentes selon qu'il s'agit d'une création de compte ou d'une connexion.
+enum ModeOtp { connexion, inscription }
+
+class OtpScreen extends ConsumerStatefulWidget {
   final String phoneNumber;
+  final ModeOtp mode;
+  final String? prenom;
 
-  const OtpScreen({super.key, required this.phoneNumber});
+  const OtpScreen({
+    super.key,
+    required this.phoneNumber,
+    this.mode = ModeOtp.connexion,
+    this.prenom,
+  });
 
   @override
-  State<OtpScreen> createState() => _OtpScreenState();
+  ConsumerState<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen>
+class _OtpScreenState extends ConsumerState<OtpScreen>
     with SingleTickerProviderStateMixin {
   final List<TextEditingController> _controllers =
       List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
 
-  bool _isLoading = false;
   bool _hasError = false;
   String _errorMessage = '';
 
   int _secondsRemaining = 60;
   Timer? _timer;
 
-  static const _validOtp = '123456';
-
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
+
+  bool get _isLoading => ref.watch(authControllerProvider).isLoading;
+
+  String get _telephoneAffiche =>
+      Formatters.telephoneApi(widget.phoneNumber);
 
   @override
   void initState() {
@@ -91,35 +108,46 @@ class _OtpScreenState extends State<OtpScreen>
   }
 
   Future<void> _verifyOtp() async {
-    if (_enteredOtp.length < 6) return;
+    if (_enteredOtp.length < 6 || _isLoading) return;
 
-    setState(() {
-      _isLoading = true;
-      _hasError = false;
-    });
+    setState(() => _hasError = false);
 
-    await Future.delayed(const Duration(milliseconds: 1200));
+    final controller = ref.read(authControllerProvider.notifier);
+    final succes = switch (widget.mode) {
+      ModeOtp.connexion => await controller.confirmerConnexion(
+        telephoneSaisi: widget.phoneNumber,
+        codeOtp: _enteredOtp,
+      ),
+      ModeOtp.inscription => await controller.verifierOtpInscription(
+        telephoneSaisi: widget.phoneNumber,
+        codeOtp: _enteredOtp,
+      ),
+    };
+
     if (!mounted) return;
 
-    if (_enteredOtp == _validOtp) {
-      setState(() => _isLoading = false);
+    if (succes) {
       _showSuccessDialog();
-    } else {
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-        _errorMessage = 'Code incorrect. Veuillez réessayer.';
-      });
-      for (final c in _controllers) {
-        c.clear();
-      }
-      _focusNodes[0].requestFocus();
-      HapticFeedback.heavyImpact();
+      return;
     }
+
+    setState(() {
+      _hasError = true;
+      _errorMessage =
+          ref.read(messageErreurAuthProvider) ??
+          'Code incorrect. Veuillez réessayer.';
+    });
+    for (final c in _controllers) {
+      c.clear();
+    }
+    _focusNodes[0].requestFocus();
+    HapticFeedback.heavyImpact();
   }
 
   void _showSuccessDialog() {
     HapticFeedback.lightImpact();
+
+    final estInscription = widget.mode == ModeOtp.inscription;
 
     showDialog(
       context: context,
@@ -143,45 +171,66 @@ class _OtpScreenState extends State<OtpScreen>
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Connexion réussie !',
-              style: TextStyle(
+            Text(
+              estInscription ? 'Numéro vérifié !' : 'Connexion réussie !',
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Bienvenue sur E-BEB SALARY',
-              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            Text(
+              estInscription
+                  ? 'Définissez maintenant votre code PIN'
+                  : 'Bienvenue sur Ebeb Finance',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.textSecondary),
             ),
           ],
         ),
       ),
     );
 
-    // 🔥 Redirection automatique après 2 secondes
+    // Redirection automatique après 2 secondes
     Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-              (route) => false,
-        );
-      }
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => estInscription
+              ? PinSetupScreen(
+                  phoneNumber: widget.phoneNumber,
+                  prenom: widget.prenom,
+                )
+              : const HomeScreen(),
+        ),
+        (route) => false,
+      );
     });
   }
 
   Future<void> _resendOtp() async {
-    if (_secondsRemaining > 0) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
+    if (_secondsRemaining > 0 || _isLoading) return;
+
+    final succes = await ref
+        .read(authControllerProvider.notifier)
+        .renvoyerOtp(widget.phoneNumber);
     if (!mounted) return;
-    setState(() => _isLoading = false);
+
+    if (!succes) {
+      setState(() {
+        _hasError = true;
+        _errorMessage = ref.read(messageErreurAuthProvider) ??
+            'Impossible de renvoyer le code.';
+      });
+      return;
+    }
+
     _startTimer();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Code renvoyé au ${widget.phoneNumber}'),
+        content: Text('Code renvoyé au $_telephoneAffiche'),
         backgroundColor: AppColors.success,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -231,15 +280,12 @@ class _OtpScreenState extends State<OtpScreen>
         Container(
           width: 52,
           height: 52,
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: AppColors.primaryBlue.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Icon(
-            Icons.message_rounded,
-            color: AppColors.primaryBlue,
-            size: 26,
-          ),
+          child: Image.asset('assets/logo.jpeg', fit: BoxFit.contain),
         ),
         const SizedBox(height: 20),
         const Text(
@@ -261,7 +307,7 @@ class _OtpScreenState extends State<OtpScreen>
             children: [
               const TextSpan(text: 'Un code à 6 chiffres a été envoyé au\n'),
               TextSpan(
-                text: widget.phoneNumber,
+                text: _telephoneAffiche,
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -348,30 +394,6 @@ class _OtpScreenState extends State<OtpScreen>
                         fontWeight: FontWeight.w700,
                         color: Colors.white),
                   ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.orange.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: AppColors.orange.withValues(alpha: 0.30)),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.info_outline_rounded,
-                    color: AppColors.orange, size: 14),
-                SizedBox(width: 6),
-                Text(
-                  'Code de démo : 123456',
-                  style: TextStyle(
-                      color: AppColors.orange,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
           ),
         ],
       ),

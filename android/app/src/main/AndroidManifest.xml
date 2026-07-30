@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Appels à l'API ebebfinance.com (présente en debug uniquement sinon). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Photos KYC : recto, verso et selfie (image_picker). -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+
     <application
         android:label="e_beb_app"
         android:name="${applicationName}"

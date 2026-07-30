@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/models/user_model.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../domain/entities/type_cotisation.dart';
+import '../../../presentation/providers/cotisation_providers.dart';
 
-class TauxTab extends StatelessWidget {
-  final UserModel user;
-
-  const TauxTab({super.key, required this.user});
+/// Vue « Vos taux » : édition en lot des règles de prélèvement
+/// (`/espace-utilisateur/regle-prelevements`).
+class TauxTab extends ConsumerWidget {
+  const TauxTab({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cotisations = ref.watch(cotisationsControllerProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -24,148 +29,157 @@ class TauxTab extends StatelessWidget {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        child: Column(
-          children: [
-            const _ParametresFinanciers(),
-            const SizedBox(height: 24),
-            const _ValiderButton(),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Bouton Valider ───────────────────────────────────────────────────────────
-
-class _ValiderButton extends StatelessWidget {
-  const _ValiderButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                'Vos taux de prélèvement ont été enregistrés',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              backgroundColor: AppColors.primaryBlue,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+      body: cotisations.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (erreur, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_off_rounded,
+                    color: AppColors.error, size: 34),
+                const SizedBox(height: 12),
+                Text(
+                  erreur is ApiException
+                      ? erreur.message
+                      : 'Impossible de charger vos taux.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                      height: 1.5),
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: () => ref
+                      .read(cotisationsControllerProvider.notifier)
+                      .recharger(),
+                  style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(160, 44)),
+                  child: const Text('Réessayer'),
+                ),
+              ],
             ),
-          );
-        },
-        icon: const Icon(Icons.check_circle_rounded, size: 20),
-        label: const Text(
-          'VALIDER',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, letterSpacing: 0.5),
+          ),
         ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryBlue,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          elevation: 2,
-        ),
+        data: (types) => types.isEmpty
+            ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Text(
+                    'Aucun type de cotisation n\'est disponible pour le moment.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                        height: 1.5),
+                  ),
+                ),
+              )
+            : SingleChildScrollView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                child: _ParametresFinanciers(
+                  // La clé force la reconstruction des contrôleurs quand la
+                  // liste change (ajout / suppression de cotisation).
+                  key: ValueKey(types.map((t) => t.id).join('|')),
+                  types: types,
+                ),
+              ),
       ),
     );
   }
 }
-
-// ─── Paramètres financiers ────────────────────────────────────────────────────
 
 // ─── Paramètres financiers ────────────────────────────────────────────────────
 
 class _ServiceParam {
-  final String label;
+  final TypeCotisation type;
   final Color color;
-  final bool hasToggle;
   final TextEditingController tauxController;
   final TextEditingController montantController;
+
+  /// `true` = prélèvement en pourcentage, `false` = montant fixe.
   bool tauxActive;
   bool montantActive;
 
   _ServiceParam({
-    required this.label,
+    required this.type,
     required this.color,
-    required this.hasToggle,
     required this.tauxController,
     required this.montantController,
     this.tauxActive = true,
     this.montantActive = true,
   });
+
+  String get label => type.libelle;
+
+  /// Les cotisations de la plateforme ne peuvent pas être désactivées.
+  bool get hasToggle => type.estPersonnalise;
+
+  double get valeurSaisie => tauxActive
+      ? (double.tryParse(tauxController.text) ?? 0)
+      : (double.tryParse(montantController.text) ?? 0);
+
+  TypeCalcul get typeCalcul =>
+      tauxActive ? TypeCalcul.pourcentage : TypeCalcul.fixe;
 }
 
-class _ParametresFinanciers extends StatefulWidget {
-  const _ParametresFinanciers();
+class _ParametresFinanciers extends ConsumerStatefulWidget {
+  final List<TypeCotisation> types;
+
+  const _ParametresFinanciers({super.key, required this.types});
 
   @override
-  State<_ParametresFinanciers> createState() => _ParametresFinanciersState();
+  ConsumerState<_ParametresFinanciers> createState() =>
+      _ParametresFinanciersState();
 }
 
-class _ParametresFinanciersState extends State<_ParametresFinanciers> {
+class _ParametresFinanciersState
+    extends ConsumerState<_ParametresFinanciers> {
   late final List<_ServiceParam> _services;
+
+  static const _palette = [
+    Color(0xFFF97316),
+    Color(0xFF9CA3AF),
+    Color(0xFFF59E0B),
+    Color(0xFF3B82F6),
+    Color(0xFF22C55E),
+    Color(0xFF8B5CF6),
+  ];
 
   @override
   void initState() {
     super.initState();
     _services = [
-      _ServiceParam(
-        label: 'CNPS',
-        color: const Color(0xFFF97316),
-        hasToggle: false,
-        tauxController: TextEditingController(text: '12'),
-        montantController: TextEditingController(text: '0'),
-      ),
-      _ServiceParam(
-        label: 'CMU',
-        color: const Color(0xFF9CA3AF),
-        hasToggle: false,
-        tauxController: TextEditingController(text: '3'),
-        montantController: TextEditingController(text: '0'),
-      ),
-      _ServiceParam(
-        label: 'ASSU 1',
-        color: const Color(0xFFF59E0B),
-        hasToggle: true,
-        tauxController: TextEditingController(text: '5'),
-        montantController: TextEditingController(text: '0'),
-        tauxActive: true,
-        montantActive: true,
-      ),
-      _ServiceParam(
-        label: 'ASSU 2',
-        color: const Color(0xFF3B82F6),
-        hasToggle: true,
-        tauxController: TextEditingController(text: '5'),
-        montantController: TextEditingController(text: '0'),
-        tauxActive: true,
-        montantActive: true,
-      ),
-      _ServiceParam(
-        label: 'EPAR 1',
-        color: const Color(0xFF22C55E),
-        hasToggle: true,
-        tauxController: TextEditingController(text: '10'),
-        montantController: TextEditingController(text: '0'),
-        tauxActive: false,
-        montantActive: false,
-      ),
+      for (var i = 0; i < widget.types.length; i++)
+        _construireService(widget.types[i], _palette[i % _palette.length]),
     ];
 
-    // Écouter les changements de texte pour mettre à jour la somme instantanément
+    // Met à jour la somme affichée à chaque frappe.
     for (final s in _services) {
       s.tauxController.addListener(_updateSomme);
     }
+  }
+
+  _ServiceParam _construireService(TypeCotisation type, Color couleur) {
+    final regle = type.regle;
+    final enPourcentage = regle?.typeCalcul != TypeCalcul.fixe;
+    return _ServiceParam(
+      type: type,
+      color: couleur,
+      tauxController: TextEditingController(
+        text: enPourcentage && regle != null ? regle.valeur.round().toString() : '0',
+      ),
+      montantController: TextEditingController(
+        text: !enPourcentage && regle != null
+            ? regle.valeur.round().toString()
+            : '0',
+      ),
+      tauxActive: enPourcentage,
+      montantActive: !enPourcentage,
+    );
   }
 
   void _updateSomme() {
@@ -182,20 +196,77 @@ class _ParametresFinanciersState extends State<_ParametresFinanciers> {
     super.dispose();
   }
 
-  // Calcul dynamique de la somme globale des taux actifs
+  // Calcul dynamique de la somme globale des taux en pourcentage
   int get _sommeTotaleTaux {
-    int total = 0;
+    var total = 0;
     for (final s in _services) {
-      if (!s.hasToggle || s.tauxActive) {
-        final valeur = int.tryParse(s.tauxController.text) ?? 0;
-        total += valeur;
+      if (s.tauxActive) {
+        total += int.tryParse(s.tauxController.text) ?? 0;
       }
     }
     return total;
   }
 
+  /// Enregistre une règle par type de cotisation ; s'arrête à la première
+  /// erreur pour ne pas masquer le message du serveur.
+  Future<void> _enregistrer() async {
+    if (_sommeTotaleTaux > 100) {
+      _snack(
+        'La somme des pourcentages dépasse 100 %. Ajustez vos taux.',
+        succes: false,
+      );
+      return;
+    }
+
+    final controller = ref.read(cotisationsControllerProvider.notifier);
+
+    for (final service in _services) {
+      final valeur = service.valeurSaisie;
+      // Une valeur nulle sur un type jamais configuré : rien à enregistrer.
+      if (valeur <= 0 && service.type.regle == null) continue;
+
+      final succes = await controller.configurerRegle(
+        typeCotisationId: service.type.id,
+        typeCalcul: service.typeCalcul,
+        valeur: valeur,
+        estActif: valeur > 0,
+      );
+
+      if (!mounted) return;
+      if (!succes) {
+        final erreur = ref.read(cotisationsControllerProvider).error;
+        _snack(
+          erreur is ApiException
+              ? '${service.label} : ${erreur.message}'
+              : 'Échec de l\'enregistrement pour ${service.label}.',
+          succes: false,
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+    _snack('Vos taux de prélèvement ont été enregistrés', succes: true);
+  }
+
+  void _snack(String message, {required bool succes}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: succes ? AppColors.primaryBlue : AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final enCours = ref.watch(cotisationsControllerProvider).isLoading;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -291,11 +362,15 @@ class _ParametresFinanciersState extends State<_ParametresFinanciers> {
             ),
             itemBuilder: (_, i) => _ServiceRow(
               service: _services[i],
+              // Taux et montant s'excluent : l'API n'accepte qu'un seul mode
+              // de calcul par règle.
               onToggleTaux: () => setState(() {
                 _services[i].tauxActive = !_services[i].tauxActive;
+                _services[i].montantActive = !_services[i].tauxActive;
               }),
               onToggleMontant: () => setState(() {
                 _services[i].montantActive = !_services[i].montantActive;
+                _services[i].tauxActive = !_services[i].montantActive;
               }),
             ),
           ),
@@ -354,6 +429,40 @@ class _ParametresFinanciersState extends State<_ParametresFinanciers> {
             ],
           ),
         ),
+
+        const SizedBox(height: 24),
+
+        // ─── Bouton Valider ─────────────────────────────────────────────────
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: enCours ? null : _enregistrer,
+            icon: enCours
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2.5),
+                  )
+                : const Icon(Icons.check_circle_rounded, size: 20),
+            label: const Text(
+              'VALIDER',
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  letterSpacing: 0.5),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryBlue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              elevation: 2,
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
       ],
     );
   }

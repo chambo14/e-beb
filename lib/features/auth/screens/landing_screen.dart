@@ -62,7 +62,7 @@ class LandingScreen extends StatelessWidget {
                     ),
                     child: ClipOval(
                       child: Image.asset(
-                        'assets/ebeb.jpeg',
+                        'assets/logo.jpeg',
                         fit: BoxFit.cover,
                       ),
                     ),

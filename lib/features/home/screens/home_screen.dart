@@ -1,40 +1,44 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/models/user_model.dart';
+import '../../../presentation/providers/session_provider.dart';
+import '../../auth/screens/phone_input_screen.dart';
 import '../tabs/accueil_tab.dart';
 import '../tabs/cotisations_tab.dart';
 import '../tabs/epargne_tab.dart';
 import '../tabs/profil_tab.dart';
 import '../tabs/taux_tab.dart';
 
-class HomeScreen extends StatefulWidget {
-  final UserModel user;
-
-  const HomeScreen({super.key, this.user = UserModel.demo});
+class HomeScreen extends ConsumerStatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
 
-  late final List<Widget> _tabs;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabs = [
-      AccueilTab(user: widget.user),
-      TauxTab(user: widget.user),
-      CotisationsTab(user: widget.user),
-      EpargneTab(user: widget.user),
-      ProfilTab(user: widget.user),
-    ];
-  }
+  static const _tabs = [
+    AccueilTab(),
+    TauxTab(),
+    CotisationsTab(),
+    EpargneTab(),
+    ProfilTab(),
+  ];
 
   @override
   Widget build(BuildContext context) {
+    // Une session invalidée (déconnexion, jeton expiré) ramène à la connexion.
+    ref.listen(sessionProvider, (precedent, courant) {
+      if (precedent?.estAuthentifie == true && !courant.estAuthentifie) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const PhoneInputScreen()),
+          (route) => false,
+        );
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: IndexedStack(index: _currentIndex, children: _tabs),

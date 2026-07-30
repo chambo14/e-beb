@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../presentation/providers/auth_controller.dart';
+import '../../../presentation/providers/notification_providers.dart';
+import '../../notifications/screens/notifications_screen.dart';
+import 'profil_edit_sheet.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final nonLues = ref.watch(nombreNotificationsNonLuesProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -35,27 +42,30 @@ class SettingsPage extends StatelessWidget {
               _buildSectionTitle('Général'),
               const SizedBox(height: 12),
               _buildSettingItem(
-                icon: Icons.share_outlined,
-                title: 'Inviter un ami à rejoindre Ebeb',
-                onTap: () {
-                  // Logique de partage d'invitation
-                },
+                icon: Icons.person_outline_rounded,
+                title: 'Modifier mes informations',
+                subtitle: 'Email, adresse, situation familiale',
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                  ),
+                  builder: (_) => const ProfilEditSheet(),
+                ),
               ),
               _buildDivider(),
               _buildSettingItem(
-                icon: Icons.percent_rounded,
-                title: 'Vos taux',
-                onTap: () {
-                  // Redirection vers la configuration des taux
-                },
-              ),
-              _buildDivider(),
-              _buildSettingItem(
-                icon: Icons.location_on_outlined,
-                title: 'Trouvez les agents à proximité',
-                onTap: () {
-                  // Logique de géolocalisation des agents
-                },
+                icon: Icons.notifications_none_rounded,
+                title: 'Notifications',
+                trailingText: nonLues > 0 ? '$nonLues non lues' : null,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen(),
+                  ),
+                ),
               ),
 
               const SizedBox(height: 32),
@@ -64,6 +74,22 @@ class SettingsPage extends StatelessWidget {
               _buildSectionTitle('Sécurité & Support'),
               const SizedBox(height: 12),
               _buildSettingItem(
+                icon: Icons.lock_outline_rounded,
+                title: 'Modifiez votre code secret',
+                subtitle: 'Code PIN à 6 chiffres',
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                  ),
+                  builder: (_) => const CodePinEditSheet(),
+                ),
+              ),
+              _buildDivider(),
+              _buildSettingItem(
                 icon: Icons.help_outline_rounded,
                 title: "Support",
                 subtitle: "Contactez le service d'aide utilisateur",
@@ -71,46 +97,23 @@ class SettingsPage extends StatelessWidget {
                   // Ouverture du canal de support
                 },
               ),
-              _buildDivider(),
-              _buildSettingItem(
-                icon: Icons.devices_rounded,
-                title: 'Vos appareils connectés',
-                trailingText: '1 appareil', // Issu du document d'analyse
-                onTap: () {
-                  // Gestion des sessions / appareils connectés
-                },
-              ),
-              _buildDivider(),
-              _buildSettingItem(
-                icon: Icons.lock_outline_rounded,
-                title: 'Modifiez votre code secret',
-                onTap: () {
-                  // Changement de code secret PIN
-                },
-              ),
 
               const SizedBox(height: 40),
 
-              // ─── Boutons d'action de déconnexion / Clôture ────────────────
+              // ─── Déconnexion ──────────────────────────────────────────────
               _buildSettingItem(
                 icon: Icons.logout_rounded,
                 title: 'Se déconnecter',
                 titleColor: Colors.orange.shade800,
                 iconColor: Colors.orange.shade800,
                 showTrailing: false,
-                onTap: () {
-                  // Code de déconnexion de la session
-                },
-              ),
-              _buildDivider(),
-              _buildSettingItem(
-                icon: Icons.delete_forever_outlined,
-                title: 'Fermer mon compte Ebeb',
-                titleColor: Colors.red.shade700,
-                iconColor: Colors.red.shade700,
-                showTrailing: false,
-                onTap: () {
-                  // Procédure de suppression du compte utilisateur
+                // La redirection est prise en charge par HomeScreen, qui écoute
+                // l'état de session.
+                onTap: () async {
+                  await ref
+                      .read(authControllerProvider.notifier)
+                      .seDeconnecter();
+                  if (context.mounted) Navigator.of(context).pop();
                 },
               ),
 

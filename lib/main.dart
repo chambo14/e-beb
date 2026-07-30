@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'core/constants/app_colors.dart';
 import 'features/auth/screens/splash_screen.dart';
@@ -14,7 +16,8 @@ void main() async {
       statusBarIconBrightness: Brightness.dark,
     ),
   );
-  runApp(const EbebApp());
+  // ProviderScope : racine de l'injection de dépendances Riverpod.
+  runApp(const ProviderScope(child: EbebApp()));
 }
 
 class EbebApp extends StatelessWidget {
@@ -23,8 +26,17 @@ class EbebApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'E-BEB SALARY',
+      title: 'Ebeb Finance',
       debugShowCheckedModeBanner: false,
+      // Sans ces délégués, tout showDatePicker(locale: Locale('fr')) échoue
+      // faute de MaterialLocalizations pour le français.
+      locale: const Locale('fr'),
+      supportedLocales: const [Locale('fr'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(

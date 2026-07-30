@@ -1,24 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../presentation/providers/auth_controller.dart';
 import 'otp_screen.dart';
 import 'register_screen.dart';
 
-class PhoneInputScreen extends StatefulWidget {
+class PhoneInputScreen extends ConsumerStatefulWidget {
   const PhoneInputScreen({super.key});
 
   @override
-  State<PhoneInputScreen> createState() => _PhoneInputScreenState();
+  ConsumerState<PhoneInputScreen> createState() => _PhoneInputScreenState();
 }
 
-class _PhoneInputScreenState extends State<PhoneInputScreen>
+class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
-  bool _isLoading = false;
-
-  // Numéros de démonstration (existants dans le système)
-  static const _existingNumbers = {'0700000001', '0102030405', '0708090102'};
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
@@ -52,34 +50,81 @@ class _PhoneInputScreenState extends State<PhoneInputScreen>
   Future<void> _verifyPhone() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    final phone = _phoneController.text.replaceAll(' ', '');
 
-    // Simulation appel API (1.5s)
-    await Future.delayed(const Duration(milliseconds: 1500));
+    // L'API décide : elle envoie un OTP si le compte existe, et répond 422
+    // « ce numéro n'existe pas » sinon.
+    final succes = await ref
+        .read(authControllerProvider.notifier)
+        .demanderConnexion(phone);
 
     if (!mounted) return;
 
-    final phone = _phoneController.text.trim();
-    final phoneDigits = phone.replaceAll(' ', '');
-    final isExisting = _existingNumbers.contains(phoneDigits);
-
-    setState(() => _isLoading = false);
-
-    if (isExisting) {
-      // Numéro existant → OTP
+    if (succes) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => OtpScreen(phoneNumber: '+225 $phone'),
+          builder: (_) => OtpScreen(phoneNumber: phone),
         ),
       );
-    } else {
-      // Nouveau numéro → Inscription
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => RegisterScreen(phoneNumber: phone),
-        ),
-      );
+      return;
     }
+
+    _proposerInscription(phone);
+  }
+
+  /// Affiche l'erreur renvoyée par l'API et, si le compte est inconnu, propose
+  /// de basculer vers l'inscription.
+  void _proposerInscription(String phone) {
+    final message =
+        ref.read(messageErreurAuthProvider) ?? 'Connexion impossible.';
+    final compteInconnu = message.toLowerCase().contains('existe pas');
+
+    if (!compteInconnu) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Aucun compte trouvé'),
+        content: Text(
+          'Le numéro +225 $phone n\'est pas encore enregistré. '
+          'Souhaitez-vous créer votre compte Ebeb Finance ?',
+          style: const TextStyle(height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Modifier le numéro'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => RegisterScreen(phoneNumber: phone),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(140, 44),
+            ),
+            child: const Text('S\'inscrire'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -125,11 +170,10 @@ class _PhoneInputScreenState extends State<PhoneInputScreen>
             Container(
               width: 38,
               height: 38,
+              padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [AppColors.primaryBlue, AppColors.purple],
-                ),
+                color: Colors.white,
                 boxShadow: [
                   BoxShadow(
                     color: AppColors.primaryBlue.withValues(alpha: 0.3),
@@ -138,9 +182,7 @@ class _PhoneInputScreenState extends State<PhoneInputScreen>
                   ),
                 ],
               ),
-              child:  Center(
-                child: Image.asset("ebeb.jpeg"),
-              ),
+              child: Image.asset("assets/logo.jpeg", fit: BoxFit.contain),
             ),
             const SizedBox(width: 10),
           ],
@@ -168,6 +210,7 @@ class _PhoneInputScreenState extends State<PhoneInputScreen>
   }
 
   Widget _buildFormCard() {
+    final enCours = ref.watch(authControllerProvider).isLoading;
     return Container(
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -257,7 +300,7 @@ class _PhoneInputScreenState extends State<PhoneInputScreen>
             const SizedBox(height: 24),
             // Bouton continuer
             ElevatedButton(
-              onPressed: _isLoading ? null : _verifyPhone,
+              onPressed: enCours ? null : _verifyPhone,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryBlue,
                 disabledBackgroundColor: AppColors.primaryBlue.withValues(alpha: 0.6),
@@ -266,7 +309,7 @@ class _PhoneInputScreenState extends State<PhoneInputScreen>
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: _isLoading
+              child: enCours
                   ? const SizedBox(
                       width: 22,
                       height: 22,
