@@ -1,5 +1,8 @@
+import 'dart:developer' as developer;
+
 import 'package:dio/dio.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/api_response.dart';
@@ -16,14 +19,22 @@ class AuthRemoteDataSource {
     final champs = demande.versChamps()
       ..removeWhere((_, valeur) => valeur == null);
 
+    // Trace du payload sortant : indispensable pour confronter ce que l'app
+    // envoie aux valeurs attendues par le back-end. Debug uniquement.
+    if (AppConfig.enableHttpLogs) {
+      final apercu = champs.entries
+          .map((e) => '  ${e.key} = ${e.value}')
+          .join('\n');
+      developer.log('Inscription — champs envoyés :\n$apercu', name: 'ApiClient');
+    }
+
+    // fromBytes plutôt que fromFile : ce dernier passe par dart:io, absent du
+    // web. Les octets fonctionnent sur toutes les plateformes.
     final formData = FormData.fromMap(champs);
     formData.files.addAll([
-      MapEntry('url_recto', await MultipartFile.fromFile(demande.cheminRecto)),
-      MapEntry('url_verso', await MultipartFile.fromFile(demande.cheminVerso)),
-      MapEntry(
-        'url_selfie',
-        await MultipartFile.fromFile(demande.cheminSelfie),
-      ),
+      MapEntry('url_recto', _versMultipart(demande.recto)),
+      MapEntry('url_verso', _versMultipart(demande.verso)),
+      MapEntry('url_selfie', _versMultipart(demande.selfie)),
     ]);
 
     return _client.postFormData(ApiEndpoints.inscription, formData);
@@ -60,4 +71,9 @@ class AuthRemoteDataSource {
   );
 
   Future<ApiEnvelope> deconnexion() => _client.post(ApiEndpoints.deconnexion);
+
+  /// L'API n'accepte que des images : le nom de fichier porte l'extension,
+  /// dont Laravel se sert pour déterminer le type MIME.
+  MultipartFile _versMultipart(FichierJoint fichier) =>
+      MultipartFile.fromBytes(fichier.octets, filename: fichier.nom);
 }

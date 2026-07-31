@@ -1,4 +1,17 @@
+import 'dart:typed_data';
+
 import '../../core/utils/formatters.dart';
+
+/// Pièce jointe transmise à l'inscription.
+///
+/// On transporte les octets plutôt qu'un chemin : sur le web il n'y a pas de
+/// système de fichiers, et `MultipartFile.fromFile` y est indisponible.
+class FichierJoint {
+  final String nom;
+  final Uint8List octets;
+
+  const FichierJoint({required this.nom, required this.octets});
+}
 
 /// Payload complet de `POST /auth/inscription` (multipart).
 ///
@@ -46,9 +59,9 @@ class DemandeInscription {
   final String numeroDocument;
   final DateTime documentEtablieLe;
   final DateTime documentExpireLe;
-  final String cheminRecto;
-  final String cheminVerso;
-  final String cheminSelfie;
+  final FichierJoint recto;
+  final FichierJoint verso;
+  final FichierJoint selfie;
 
   // Cotisations souscrites
   final double montantCotisationRegimeBase;
@@ -76,9 +89,9 @@ class DemandeInscription {
     required this.numeroDocument,
     required this.documentEtablieLe,
     required this.documentExpireLe,
-    required this.cheminRecto,
-    required this.cheminVerso,
-    required this.cheminSelfie,
+    required this.recto,
+    required this.verso,
+    required this.selfie,
     required this.montantCotisationRegimeBase,
     required this.montantCotisationRegimeComplementaire,
     required this.montantCotisationMensuelle,

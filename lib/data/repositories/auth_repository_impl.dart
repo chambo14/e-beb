@@ -1,4 +1,5 @@
 import '../../core/storage/token_storage.dart';
+import '../../core/utils/json_utils.dart';
 import '../../domain/entities/demande_inscription.dart';
 import '../../domain/entities/session_auth.dart';
 import '../../domain/repositories/auth_repository.dart';
@@ -14,6 +15,21 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<String> inscrire(DemandeInscription demande) async {
     final reponse = await _remote.inscrire(demande);
     await _storage.ecrireTelephone(demande.telephone);
+
+    // Le compte peut être créé alors que l'envoi de l'OTP a échoué : l'API le
+    // signale dans un sous-objet `otp_envoi` distinct, sans passer en erreur.
+    // Mieux vaut le dire que d'envoyer l'utilisateur attendre un code qui
+    // n'arrivera pas — il pourra le redemander depuis l'écran suivant.
+    final envoi = Json.objet(reponse.donnees, ['otp_envoi']);
+    if (envoi != null && !Json.booleen(envoi, ['success'], defaut: true)) {
+      return Json.texteOu(
+        envoi,
+        ['message'],
+        'Compte créé, mais l\'envoi du code a échoué. '
+            'Utilisez « Renvoyer le code ».',
+      );
+    }
+
     return reponse.message ?? 'Inscription enregistrée.';
   }
 

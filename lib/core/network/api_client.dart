@@ -141,6 +141,16 @@ class ApiClient {
     final message = map['message'] as String?;
     final erreurs = _extraireErreurs(map['errors']);
 
+    // Le message affiché à l'utilisateur est volontairement générique pour les
+    // erreurs serveur ; on trace la réponse brute pour pouvoir diagnostiquer.
+    if (AppConfig.enableHttpLogs && code >= 400) {
+      developer.log(
+        'Erreur $code — réponse brute : $corps',
+        name: 'ApiClient',
+        level: 1000,
+      );
+    }
+
     switch (code) {
       case 401:
         onNonAuthentifie?.call();

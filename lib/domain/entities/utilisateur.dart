@@ -21,13 +21,20 @@ class Utilisateur {
   // Sécurité sociale
   final String? numeroCnps;
   final String? numeroCmu;
+
+  /// Identifiant public du dossier, renvoyé par l'API sous `reference`
+  /// (ex. `EBEB-PCKD5QPWJM`).
   final String? matricule;
+
+  /// Niveau de carte attribué à l'inscription (`BASIC`, …).
+  final String? typeCarte;
 
   // Adresse
   final String? ville;
   final String? quartier;
   final String? village;
   final String? adressePostale;
+  final String? pays;
 
   // Activité professionnelle
   final String? profession;
@@ -72,10 +79,12 @@ class Utilisateur {
     this.numeroCnps,
     this.numeroCmu,
     this.matricule,
+    this.typeCarte,
     this.ville,
     this.quartier,
     this.village,
     this.adressePostale,
+    this.pays,
     this.profession,
     this.metier,
     this.categorieProfessionnelle,
@@ -126,11 +135,17 @@ class Utilisateur {
       nombreEnfants: Json.entier(racine, ['nombre_enfants']),
       numeroCnps: Json.texte(racine, ['numero_cnps', 'cnps']),
       numeroCmu: Json.texte(racine, ['numero_cmu', 'cmu']),
-      matricule: Json.texte(racine, ['matricule', 'numero_matricule']),
+      matricule: Json.texte(racine, [
+        'reference',
+        'matricule',
+        'numero_matricule',
+      ]),
+      typeCarte: Json.texte(racine, ['type_carte', 'type_card']),
       ville: Json.texte(racine, ['ville']),
       quartier: Json.texte(racine, ['quartier']),
       village: Json.texte(racine, ['village']),
       adressePostale: Json.texte(racine, ['adresse_postale']),
+      pays: Json.texte(racine, ['pays']),
       profession: Json.texte(racine, ['profession']),
       metier: Json.texte(racine, ['metier']),
       categorieProfessionnelle: Json.texte(racine, [

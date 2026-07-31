@@ -89,6 +89,46 @@ void main() {
       expect(user.montantRevenu, 242000);
     });
 
+    test('parse la réponse réelle de POST /auth/inscription', () {
+      // Capturée le 30/07/2026 sur ebebfinance.com (200).
+      final data = {
+        'user': {
+          'reference': 'EBEB-PCKD5QPWJM',
+          'nom': 'DINO',
+          'prenom': 'KOFFI',
+          'numero_cnps': '003456789611',
+          'numero_cmu': '22225555557777',
+          'situation_familiale': 'CELIBATAIRE',
+          'sexe': 'FEMME',
+          'date_naissance': '2000-04-12T00:00:00.000000Z',
+          'email': 'sandrine.yapo14@gmail.com',
+          'lieu_naissance': 'ADZOPÉ',
+          'profession': 'AGENT DE SANTÉ',
+          'telephone': '+2250707361765',
+          'ville': 'AGBOVILLE',
+          'quartier': 'COMMERCE',
+          'village': 'AGBOVILLE',
+          'adresse_postale': '01 BP ADJ 01',
+          'pays': 'CÔTE D\'IVOIRE',
+          'type_carte': 'BASIC',
+          'id': '019fb452-e962-707e-b6e4-29a214fb3324',
+        },
+        'otp_envoi': {'success': true, 'message': 'Un code OTP a été envoyé.'},
+      };
+
+      final user = Utilisateur.depuisJson(data);
+
+      expect(user.id, '019fb452-e962-707e-b6e4-29a214fb3324');
+      expect(user.nomComplet, 'KOFFI DINO');
+      expect(user.telephone, '+2250707361765');
+      // L'API nomme ce champ `reference`, pas `matricule`.
+      expect(user.matricule, 'EBEB-PCKD5QPWJM');
+      expect(user.typeCarte, 'BASIC');
+      expect(user.pays, 'CÔTE D\'IVOIRE');
+      expect(user.numeroCnps, '003456789611');
+      expect(user.dateNaissance?.year, 2000);
+    });
+
     test('ne plante pas sur un profil minimal', () {
       final user = Utilisateur.depuisJson({});
       expect(user.initiales, '?');

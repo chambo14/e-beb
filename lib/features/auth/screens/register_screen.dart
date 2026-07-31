@@ -327,8 +327,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   /// Construit le payload attendu par `POST /auth/inscription`.
-  DemandeInscription _construireDemande() {
+  ///
+  /// Les images sont lues en mémoire : sur le web, `XFile.path` est une URL
+  /// blob qu'aucune API de fichier ne sait ouvrir.
+  Future<DemandeInscription> _construireDemande() async {
     final telephone = Formatters.telephoneApi(_telephoneController.text);
+    final recto = await _versFichierJoint(_idRecto!);
+    final verso = await _versFichierJoint(_idVerso!);
+    final selfie = await _versFichierJoint(_selfie!);
     return DemandeInscription(
       nom: _nomController.text.trim(),
       prenom: _prenomsController.text.trim(),
@@ -355,14 +361,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       numeroDocument: _numeroDocumentController.text.trim(),
       documentEtablieLe: _documentEtablieLe!,
       documentExpireLe: _documentExpireLe!,
-      cheminRecto: _idRecto!.path,
-      cheminVerso: _idVerso!.path,
-      cheminSelfie: _selfie!.path,
+      recto: recto,
+      verso: verso,
+      selfie: selfie,
       montantCotisationRegimeBase: _cotisationBase,
       montantCotisationRegimeComplementaire: _cotisationComplementaire,
       montantCotisationMensuelle: _cotisationMensuelle,
       montantCotisationTrimestrielle: _cotisationTrimestrielle,
     );
+  }
+
+  Future<FichierJoint> _versFichierJoint(XFile fichier) async {
+    return FichierJoint(nom: fichier.name, octets: await fichier.readAsBytes());
   }
 
   String? _texteOuNull(TextEditingController c) {
@@ -371,9 +381,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   Future<void> _submit() async {
-    final succes = await ref
-        .read(authControllerProvider.notifier)
-        .inscrire(_construireDemande());
+    final demande = await _construireDemande();
+    if (!mounted) return;
+
+    final succes =
+        await ref.read(authControllerProvider.notifier).inscrire(demande);
 
     if (!mounted) return;
 
@@ -785,17 +797,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Widget _buildStep1() {
     return Column(
       children: [
-        // Carte principale avec ligne bleue en haut
+        // Carte principale avec ligne bleue en haut.
+        // Le liseré est un enfant clippé, pas un côté de bordure : Flutter
+        // refuse de peindre un borderRadius sur une bordure aux couleurs non
+        // uniformes.
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(4),
-            border: Border(
-              top: const BorderSide(color: AppColors.primaryBlue, width: 3),
-              left: BorderSide(color: Colors.grey.shade200),
-              right: BorderSide(color: Colors.grey.shade200),
-              bottom: BorderSide(color: Colors.grey.shade200),
-            ),
+            border: Border.all(color: Colors.grey.shade200),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.05),
@@ -804,10 +814,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ),
             ],
           ),
-          padding: const EdgeInsets.all(20),
+          clipBehavior: Clip.antiAlias,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(height: 3, color: AppColors.primaryBlue),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
               const Text(
                 'POURSUIVEZ VOTRE ENREGISTREMENT EN IMPORTANT VOS PIECES TRAVAILLEUR',
                 style: TextStyle(
@@ -842,6 +858,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 label: 'Document d\'identité verso',
                 fichier: _idVerso,
                 onTap: () => _choisirImage(_ChampFichier.verso),
+              ),
+                  ],
+                ),
               ),
             ],
           ),

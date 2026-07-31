@@ -151,7 +151,7 @@ class ProfilTab extends ConsumerWidget {
               fontSize: 14,
             ),
           ),
-          if (user.statut != null) ...[
+          if (user.typeCarte != null || user.statut != null) ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -162,7 +162,9 @@ class ProfilTab extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                user.statut!,
+                user.typeCarte != null
+                    ? 'Carte ${user.typeCarte}'
+                    : user.statut!,
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
