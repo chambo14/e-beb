@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/network/api_client.dart';
@@ -72,8 +73,34 @@ class AuthRemoteDataSource {
 
   Future<ApiEnvelope> deconnexion() => _client.post(ApiEndpoints.deconnexion);
 
-  /// L'API n'accepte que des images : le nom de fichier porte l'extension,
-  /// dont Laravel se sert pour déterminer le type MIME.
-  MultipartFile _versMultipart(FichierJoint fichier) =>
-      MultipartFile.fromBytes(fichier.octets, filename: fichier.nom);
+  /// Déclare explicitement le type MIME de l'image.
+  ///
+  /// Sans `contentType`, Dio envoie `application/octet-stream`, là où Postman
+  /// déduit `image/jpeg` de l'extension. Le back-end qui dérive l'extension de
+  /// stockage du type déclaré se retrouve alors sans extension exploitable.
+  MultipartFile _versMultipart(FichierJoint fichier) {
+    final nom = _nomAvecExtension(fichier.nom);
+    return MultipartFile.fromBytes(
+      fichier.octets,
+      filename: nom,
+      contentType: MediaType('image', _sousTypeImage(nom)),
+    );
+  }
+
+  /// Un nom sans extension empêcherait Laravel de valider la règle `mimes`.
+  String _nomAvecExtension(String nom) =>
+      nom.contains('.') ? nom : '$nom.jpg';
+
+  String _sousTypeImage(String nom) {
+    final extension = nom.split('.').last.toLowerCase();
+    return switch (extension) {
+      'png' => 'png',
+      'gif' => 'gif',
+      'webp' => 'webp',
+      'bmp' => 'bmp',
+      'heic' || 'heif' => 'heic',
+      // image_picker renvoie du JPEG dans l'immense majorité des cas.
+      _ => 'jpeg',
+    };
+  }
 }

@@ -39,13 +39,19 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          final token = await _tokenStorage.lireToken();
-          if (token != null && token.isNotEmpty) {
-            options.headers['Authorization'] = 'Bearer $token';
+          // Les routes publiques ne doivent jamais porter d'Authorization :
+          // un jeton périmé resté en stockage ferait échouer une inscription
+          // ou une connexion qui n'a pourtant besoin d'aucune session.
+          if (!_estRoutePublique(options.path)) {
+            final token = await _tokenStorage.lireToken();
+            if (token != null && token.isNotEmpty) {
+              options.headers['Authorization'] = 'Bearer $token';
+            }
           }
           if (AppConfig.enableHttpLogs) {
             developer.log(
-              '→ ${options.method} ${options.uri}',
+              '→ ${options.method} ${options.uri}'
+              '${options.headers.containsKey('Authorization') ? ' [avec jeton]' : ''}',
               name: 'ApiClient',
             );
           }
@@ -65,6 +71,14 @@ class ApiClient {
   }
 
   Dio get dio => _dio;
+
+  /// Routes accessibles sans session : inscription, OTP, connexion, et les
+  /// informations publiques de la plateforme.
+  ///
+  /// La déconnexion (`/espace-utilisateur/se-deconnecter`) vit sous `auth`
+  /// côté métier mais exige le jeton : elle n'est pas concernée.
+  static bool _estRoutePublique(String chemin) =>
+      chemin.startsWith('/auth/') || chemin.startsWith('/administration/public/');
 
   Future<ApiEnvelope> get(
     String chemin, {
