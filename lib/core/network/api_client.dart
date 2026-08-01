@@ -50,8 +50,8 @@ class ApiClient {
           }
           if (AppConfig.enableHttpLogs) {
             developer.log(
-              '→ ${options.method} ${options.uri}'
-              '${options.headers.containsKey('Authorization') ? ' [avec jeton]' : ''}',
+              '→ ${options.method} ${options.uri}\n'
+              '${_enTetesLisibles(options)}',
               name: 'ApiClient',
             );
           }
@@ -79,6 +79,25 @@ class ApiClient {
   /// côté métier mais exige le jeton : elle n'est pas concernée.
   static bool _estRoutePublique(String chemin) =>
       chemin.startsWith('/auth/') || chemin.startsWith('/administration/public/');
+
+  /// En-têtes effectivement envoyés, pour comparaison avec Postman.
+  ///
+  /// Le `Content-Type` n'est pas dans `options.headers` tant que Dio ne l'a
+  /// pas déduit du corps : on lit `options.contentType`, qui reflète ce qui
+  /// partira réellement (avec le boundary pour un multipart).
+  static String _enTetesLisibles(RequestOptions options) {
+    final lignes = <String>[
+      '  content-type: ${options.contentType ?? '(déduit du corps)'}',
+    ];
+    options.headers.forEach((cle, valeur) {
+      // Le jeton n'a pas à finir dans les journaux.
+      final affichee = cle.toLowerCase() == 'authorization'
+          ? 'Bearer …(masqué)'
+          : valeur;
+      lignes.add('  $cle: $affichee');
+    });
+    return lignes.join('\n');
+  }
 
   Future<ApiEnvelope> get(
     String chemin, {
