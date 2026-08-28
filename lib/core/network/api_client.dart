@@ -78,7 +78,8 @@ class ApiClient {
   /// La déconnexion (`/espace-utilisateur/se-deconnecter`) vit sous `auth`
   /// côté métier mais exige le jeton : elle n'est pas concernée.
   static bool _estRoutePublique(String chemin) =>
-      chemin.startsWith('/auth/') || chemin.startsWith('/administration/public/');
+      chemin.startsWith('/auth/') ||
+      chemin.startsWith('/administration/public/');
 
   /// En-têtes effectivement envoyés, pour comparaison avec Postman.
   ///
@@ -142,7 +143,9 @@ class ApiClient {
   Future<ApiEnvelope> postFormData(String chemin, FormData formData) =>
       _executer(() => _dio.post(chemin, data: formData));
 
-  Future<ApiEnvelope> _executer(Future<Response<dynamic>> Function() appel) async {
+  Future<ApiEnvelope> _executer(
+    Future<Response<dynamic>> Function() appel,
+  ) async {
     late final Response<dynamic> reponse;
     try {
       reponse = await appel();
@@ -174,6 +177,10 @@ class ApiClient {
     final message = map['message'] as String?;
     final erreurs = _extraireErreurs(map['errors']);
 
+    developer.log(
+      'code Erreur API $code : $message, erreurs : $erreurs',
+      name: 'ApiClient',
+    );
     // Le message affiché à l'utilisateur est volontairement générique pour les
     // erreurs serveur ; on trace la réponse brute pour pouvoir diagnostiquer.
     if (AppConfig.enableHttpLogs && code >= 400) {
@@ -196,7 +203,8 @@ class ApiClient {
         return ApiException(
           type: ApiErrorType.interdit,
           statusCode: code,
-          message: message ?? 'Vous n\'êtes pas autorisé à effectuer cette action.',
+          message:
+              message ?? 'Vous n\'êtes pas autorisé à effectuer cette action.',
         );
       case 404:
         return ApiException(
@@ -223,7 +231,11 @@ class ApiClient {
           return ApiException(
             type: ApiErrorType.serveur,
             statusCode: code,
+            // Le back-end renvoie déjà un message sûr (jamais la trace brute,
+            // voir BaseController::throw) : on l'affiche tel quel plutôt que
+            // d'écraser systématiquement avec un texte générique.
             message:
+                message ??
                 'Le service est momentanément indisponible. Réessayez plus tard.',
           );
         }

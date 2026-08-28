@@ -22,6 +22,13 @@ class TypeCotisation {
   final String? categorie;
   final String? description;
   final double? montantPaiementMensuel;
+  final bool estPersonnaliseApi;
+
+  /// Mode de calcul et valeur par défaut du type, configurés côté back-end
+  /// (`default_type_calcul` / `default_valeur`). Utilisés pour pré-remplir le
+  /// taux tant que l'utilisateur n'a pas encore sa propre règle.
+  final TypeCalcul? typeCalculParDefaut;
+  final double? valeurParDefaut;
 
   /// Règle de prélèvement déjà configurée par l'utilisateur, le cas échéant.
   final ReglePrelevement? regle;
@@ -33,6 +40,9 @@ class TypeCotisation {
     this.categorie,
     this.description,
     this.montantPaiementMensuel,
+    this.estPersonnaliseApi = false,
+    this.typeCalculParDefaut,
+    this.valeurParDefaut,
     this.regle,
   });
 
@@ -40,8 +50,23 @@ class TypeCotisation {
   bool get estActif => regle?.estActif ?? false;
 
   /// `true` si l'utilisateur a lui-même créé ce type (cotisation personnalisée).
+  ///
+  /// Priorité au champ `est_personnalise` renvoyé par l'API (source de
+  /// vérité, basé sur `user_id`) ; le mot-clé dans `categorie` ne sert que de
+  /// filet de sécurité si ce champ est absent d'une réponse plus ancienne.
   bool get estPersonnalise =>
+      estPersonnaliseApi ||
       (categorie ?? '').toUpperCase().contains('PERSONNALIS');
+
+  /// Mode de calcul à utiliser pour pré-remplir un formulaire : la règle déjà
+  /// configurée prime, sinon le défaut du type, sinon POURCENTAGE.
+  TypeCalcul get typeCalculEffectif =>
+      regle?.typeCalcul ?? typeCalculParDefaut ?? TypeCalcul.pourcentage;
+
+  /// Valeur à utiliser pour pré-remplir un formulaire : la règle déjà
+  /// configurée prime, sinon le défaut du type, sinon 5 (règle plateforme :
+  /// taux par défaut de 5 % quand rien n'est configuré en base).
+  double get valeurEffective => regle?.valeur ?? valeurParDefaut ?? 5;
 
   factory TypeCotisation.depuisJson(Map<String, dynamic> json) {
     final regleJson = Json.objet(json, [
@@ -60,6 +85,11 @@ class TypeCotisation {
         'montant_paiement_mensuel',
         'montant_mensuel',
       ]),
+      estPersonnaliseApi: Json.booleen(json, ['est_personnalise']),
+      typeCalculParDefaut: Json.texte(json, ['default_type_calcul']) == null
+          ? null
+          : TypeCalcul.depuisCode(Json.texte(json, ['default_type_calcul'])),
+      valeurParDefaut: Json.decimal(json, ['default_valeur']),
       regle: regleJson == null ? null : ReglePrelevement.depuisJson(regleJson),
     );
   }
@@ -71,6 +101,9 @@ class TypeCotisation {
     categorie: categorie,
     description: description,
     montantPaiementMensuel: montantPaiementMensuel,
+    estPersonnaliseApi: estPersonnaliseApi,
+    typeCalculParDefaut: typeCalculParDefaut,
+    valeurParDefaut: valeurParDefaut,
     regle: regle ?? this.regle,
   );
 }

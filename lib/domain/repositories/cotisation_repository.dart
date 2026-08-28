@@ -18,6 +18,7 @@ abstract class CotisationRepository {
     required String code,
     required double montantPaiementMensuel,
     String? description,
+    String? categorie,
   });
 
   Future<TypeCotisation> modifierTypePersonnalise({

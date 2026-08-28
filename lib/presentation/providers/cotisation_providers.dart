@@ -56,12 +56,14 @@ class CotisationsController extends AsyncNotifier<List<TypeCotisation>> {
     required String code,
     required double montantPaiementMensuel,
     String? description,
+    String? categorie,
   }) => _muter(
     () => ref.read(cotisationRepositoryProvider).ajouterTypePersonnalise(
       libelle: libelle,
       code: code,
       montantPaiementMensuel: montantPaiementMensuel,
       description: description,
+      categorie: categorie,
     ),
   );
 

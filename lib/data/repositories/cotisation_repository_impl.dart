@@ -39,6 +39,7 @@ class CotisationRepositoryImpl implements CotisationRepository {
     required String code,
     required double montantPaiementMensuel,
     String? description,
+    String? categorie,
   }) async {
     final reponse = await _remote.ajouterTypePersonnalise(
       _corpsTypePersonnalise(
@@ -46,6 +47,7 @@ class CotisationRepositoryImpl implements CotisationRepository {
         code: code,
         montantPaiementMensuel: montantPaiementMensuel,
         description: description,
+        categorie: categorie,
       ),
     );
     return TypeCotisation.depuisJson(reponse.donnees);
@@ -80,10 +82,13 @@ class CotisationRepositoryImpl implements CotisationRepository {
     required String code,
     required double montantPaiementMensuel,
     String? description,
+    String? categorie,
   }) => {
     'libelle': libelle,
     'code': code,
-    'categorie': _categoriePersonnalisee,
+    'categorie': (categorie == null || categorie.trim().isEmpty)
+        ? _categoriePersonnalisee
+        : categorie.trim(),
     'description': description ?? libelle,
     'montant_paiement_mensuel': montantPaiementMensuel.round(),
   };
