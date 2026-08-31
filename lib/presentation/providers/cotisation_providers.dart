@@ -25,6 +25,15 @@ class CotisationsController extends AsyncNotifier<List<TypeCotisation>> {
     );
   }
 
+  /// Remplace directement les données sans passer par `AsyncLoading` : évite
+  /// que les écrans utilisant `.when(loading: ...)` sur ce provider ne
+  /// démontent leur contenu (perte de l'état local en cours) le temps du
+  /// rafraîchissement — utile après une mutation où l'écran appelant gère
+  /// déjà son propre indicateur de progression.
+  void definirDonnees(List<TypeCotisation> donnees) {
+    state = AsyncData(donnees);
+  }
+
   Future<bool> configurerRegle({
     required String typeCotisationId,
     required TypeCalcul typeCalcul,
@@ -110,6 +119,16 @@ final cotisationsControllerProvider =
     AsyncNotifierProvider<CotisationsController, List<TypeCotisation>>(
       CotisationsController.new,
     );
+
+/// Suggestions de types de cotisations personnalisés déjà créés par d'autres
+/// utilisateurs — pour proposer une saisie cohérente sans dupliquer les
+/// informations communes. Chargées une fois par session.
+final suggestionsTypesCotisationProvider =
+    FutureProvider<List<SuggestionTypeCotisation>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (!session.estAuthentifie) return const [];
+  return ref.watch(cotisationRepositoryProvider).suggestionsTypesPersonnalises();
+});
 
 /// Cotisations créées par l'utilisateur (catégorie « personnalisée »).
 final cotisationsPersonnaliseesProvider = Provider<List<TypeCotisation>>((ref) {

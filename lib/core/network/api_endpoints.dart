@@ -31,10 +31,13 @@ class ApiEndpoints {
   // ---------------------------------------------------------------- Cotisations personnalisées
   static const String typesCotisationPersonnalises =
       '/espace-utilisateur/types-cotisation-personnalises';
+  static const String suggestionsTypesCotisationPersonnalises =
+      '$typesCotisationPersonnalises/suggestions';
   static String typeCotisationPersonnalise(String id) =>
       '$typesCotisationPersonnalises/$id';
 
   // ---------------------------------------------------------------- Comptes mobile money
+  static const String moyensPaiement = '/espace-utilisateur/moyens-paiement';
   static const String comptesMobileMoney =
       '/espace-utilisateur/comptes-mobile-money';
   static String compteMobileMoneyPrincipal(String id) =>

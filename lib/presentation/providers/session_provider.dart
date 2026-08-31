@@ -89,10 +89,11 @@ class SessionController extends Notifier<EtatSession> {
       utilisateur: session.utilisateur,
       telephone: telephone ?? session.utilisateur?.telephone,
     );
-    // Le profil n'est pas toujours renvoyé avec le jeton : on le complète.
-    if (session.utilisateur == null) {
-      await rafraichirUtilisateur();
-    }
+    // L'utilisateur renvoyé avec le jeton de connexion est un modèle brut,
+    // sans ses relations chargées (déclaration de revenu, documents KYC,
+    // comptes mobile money...) — toujours incomplet, jamais `null`. On
+    // recharge donc systématiquement le profil complet via `/details`.
+    await rafraichirUtilisateur();
   }
 
   Future<void> rafraichirUtilisateur() async {

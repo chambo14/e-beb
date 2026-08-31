@@ -11,7 +11,9 @@ abstract class UtilisateurRepository {
 
   Future<Solde> solde();
 
-  Future<Recapitulatif> recapitulatif();
+  /// Sans paramètre : mois courant. Avec [dateDebut]/[dateFin] : récapitulatif
+  /// sur cet intervalle (permet une vue par semaine ou par année).
+  Future<Recapitulatif> recapitulatif({DateTime? dateDebut, DateTime? dateFin});
 
   Future<String> modifierCodePin({
     required String ancienCodePin,

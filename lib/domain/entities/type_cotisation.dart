@@ -108,6 +108,31 @@ class TypeCotisation {
   );
 }
 
+/// Suggestion de type de cotisation personnalisé déjà créé par un autre
+/// utilisateur (`/types-cotisation-personnalises/suggestions`) — libellé,
+/// code et catégorie uniquement : ni montant ni description, propres à
+/// chaque utilisateur. La sélectionner crée une nouvelle ligne pour
+/// l'utilisateur courant sans jamais modifier le type d'origine.
+class SuggestionTypeCotisation {
+  final String libelle;
+  final String code;
+  final String? categorie;
+
+  const SuggestionTypeCotisation({
+    required this.libelle,
+    required this.code,
+    this.categorie,
+  });
+
+  factory SuggestionTypeCotisation.depuisJson(Map<String, dynamic> json) {
+    return SuggestionTypeCotisation(
+      libelle: Json.texteOu(json, ['libelle'], '—'),
+      code: Json.texteOu(json, ['code']),
+      categorie: Json.texte(json, ['categorie']),
+    );
+  }
+}
+
 /// Règle de prélèvement configurée par l'utilisateur pour un type de cotisation.
 class ReglePrelevement {
   final String? id;
@@ -130,11 +155,25 @@ class ReglePrelevement {
       : '${valeur.round()} FCFA';
 
   factory ReglePrelevement.depuisJson(Map<String, dynamic> json) {
+    final typeCalcul = TypeCalcul.depuisCode(Json.texte(json, ['type_calcul']));
+
+    // Deux formats coexistent selon la route : le modèle brut renvoie la
+    // valeur sous `valeur` (ex. réponse de `configurer-regle-prelevement`),
+    // tandis que `regle-prelevements/types` la sépare en `taux` (POURCENTAGE)
+    // / `montant` (FIXE), l'autre champ étant toujours à 0. Ne lire que
+    // `montant` faisait retomber à 0 toute règle en pourcentage (CNPS,
+    // cotisations personnalisées) puisque son `montant` est toujours nul.
+    final valeurDirecte = Json.decimal(json, ['valeur', 'value']);
+    final valeur = valeurDirecte ??
+        (typeCalcul == TypeCalcul.pourcentage
+            ? Json.decimalOu(json, ['taux'])
+            : Json.decimalOu(json, ['montant']));
+
     return ReglePrelevement(
       id: Json.texte(json, ['id', 'uuid']),
       typeCotisationId: Json.texteOu(json, ['type_cotisation_id', 'type_id']),
-      typeCalcul: TypeCalcul.depuisCode(Json.texte(json, ['type_calcul'])),
-      valeur: Json.decimalOu(json, ['valeur', 'value', 'montant']),
+      typeCalcul: typeCalcul,
+      valeur: valeur,
       estActif: Json.booleen(json, ['est_actif', 'actif'], defaut: true),
     );
   }

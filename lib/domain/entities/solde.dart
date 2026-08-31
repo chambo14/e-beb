@@ -23,7 +23,11 @@ class Solde {
   factory Solde.depuisJson(Map<String, dynamic> json) {
     final racine = Json.objet(json, ['solde', 'compte']) ?? json;
     return Solde(
+      // Le back-end (`RecapitulatifService::soldesGlobaux`) renvoie
+      // `solde_principal` — les autres clés sont conservées en repli pour
+      // tolérer une évolution future du contrat.
       disponible: Json.decimalOu(racine, [
+        'solde_principal',
         'solde_disponible',
         'disponible',
         'solde',

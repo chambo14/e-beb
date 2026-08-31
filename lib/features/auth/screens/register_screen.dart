@@ -66,12 +66,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   /// Valeurs envoyées à l'API (le libellé affiché reste en majuscules accentuées).
   static const _sexeApi = {'MASCULIN': 'HOMME', 'FÉMININ': 'FEMME'};
+  // `situation_familiale` est un ENUM MySQL limité à CELIBATAIRE/MARIE/
+  // DIVORCE/VEUF (voir migration users) : aucune valeur "séparé(e)" n'existe
+  // côté back-end, l'option a donc été retirée pour ne pas faire échouer
+  // l'inscription avec « Data truncated for column 'situation_familiale' ».
   static const _situationApi = {
     'CÉLIBATAIRE': 'celibataire',
     'MARIÉ(E)': 'marie',
     'DIVORCÉ(E)': 'divorce',
-    'SÉPARÉ(E)': 'separe',
     'VEUF / VEUVE': 'veuf',
+  };
+  // `type_document` est également un ENUM MySQL (CNI/PASSPORT/
+  // PERMIS_CONDUIRE/ATTESTATION, voir migration document_kyc) : les libellés
+  // français affichés doivent être traduits avant l'envoi, sous peine de la
+  // même erreur « Data truncated ».
+  static const _typeDocumentApi = {
+    'CNI': 'CNI',
+    'PASSEPORT': 'PASSPORT',
+    'PERMIS DE CONDUIRE': 'PERMIS_CONDUIRE',
+    'ATTESTATION D\'IDENTITE': 'ATTESTATION',
   };
 
   static const _genreOptions = ['MASCULIN', 'FÉMININ'];
@@ -79,7 +92,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     'CÉLIBATAIRE',
     'MARIÉ(E)',
     'DIVORCÉ(E)',
-    'SÉPARÉ(E)',
     'VEUF / VEUVE',
   ];
   static const _typeDocumentOptions = [
@@ -357,7 +369,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       villeActivite: _villeProController.text.trim(),
       quartierActivite: _quartierProController.text.trim(),
       communeSousPrefectureActivite: _communeProController.text.trim(),
-      typeDocument: _typeDocument!,
+      typeDocument: _typeDocumentApi[_typeDocument] ?? _typeDocument!,
       numeroDocument: _numeroDocumentController.text.trim(),
       documentEtablieLe: _documentEtablieLe!,
       documentExpireLe: _documentExpireLe!,

@@ -3,15 +3,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../presentation/providers/auth_controller.dart';
 import '../../../presentation/providers/notification_providers.dart';
+import '../../../presentation/providers/session_provider.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import 'profil_edit_sheet.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
+  void _profilVerrouille(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Vos documents sont en cours de vérification. '
+          'Cette action sera disponible une fois votre compte activé.',
+        ),
+        backgroundColor: AppColors.orange,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(10))),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final nonLues = ref.watch(nombreNotificationsNonLuesProvider);
+    final compteActif = ref.watch(utilisateurCourantProvider)?.estActif ?? true;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -44,17 +61,22 @@ class SettingsPage extends ConsumerWidget {
               _buildSettingItem(
                 icon: Icons.person_outline_rounded,
                 title: 'Modifier mes informations',
-                subtitle: 'Email, adresse, situation familiale',
-                onTap: () => showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(24),
-                    ),
-                  ),
-                  builder: (_) => const ProfilEditSheet(),
-                ),
+                subtitle: compteActif
+                    ? 'Email, adresse, situation familiale'
+                    : 'Vérification des documents en cours',
+                verrouille: !compteActif,
+                onTap: compteActif
+                    ? () => showModalBottomSheet<void>(
+                          context: context,
+                          isScrollControlled: true,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(24),
+                            ),
+                          ),
+                          builder: (_) => const ProfilEditSheet(),
+                        )
+                    : () => _profilVerrouille(context),
               ),
               _buildDivider(),
               _buildSettingItem(
@@ -108,13 +130,15 @@ class SettingsPage extends ConsumerWidget {
                 iconColor: Colors.orange.shade800,
                 showTrailing: false,
                 // La redirection est prise en charge par HomeScreen, qui écoute
-                // l'état de session.
-                onTap: () async {
-                  await ref
-                      .read(authControllerProvider.notifier)
-                      .seDeconnecter();
-                  if (context.mounted) Navigator.of(context).pop();
-                },
+                // l'état de session et remplace toute la pile de navigation
+                // (pushAndRemoveUntil) dès qu'elle passe à non-authentifié.
+                // Ne PAS dépiler ici en plus : selon l'ordre d'exécution, ce
+                // pop peut arriver après que la pile a déjà été remplacée par
+                // le seul écran de connexion, et planter en tentant de
+                // dépiler la dernière route restante.
+                onTap: () => ref
+                    .read(authControllerProvider.notifier)
+                    .seDeconnecter(),
               ),
 
               const SizedBox(height: 48),
@@ -181,6 +205,7 @@ class SettingsPage extends ConsumerWidget {
     Color? titleColor,
     Color? iconColor,
     bool showTrailing = true,
+    bool verrouille = false,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -192,7 +217,9 @@ class SettingsPage extends ConsumerWidget {
           children: [
             Icon(
               icon,
-              color: iconColor ?? AppColors.textSecondary,
+              color: verrouille
+                  ? AppColors.textHint
+                  : (iconColor ?? AppColors.textSecondary),
               size: 22,
             ),
             const SizedBox(width: 16),
@@ -205,7 +232,9 @@ class SettingsPage extends ConsumerWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: titleColor ?? AppColors.textPrimary,
+                      color: verrouille
+                          ? AppColors.textHint
+                          : (titleColor ?? AppColors.textPrimary),
                     ),
                   ),
                   if (subtitle != null) ...[
@@ -221,6 +250,9 @@ class SettingsPage extends ConsumerWidget {
                 ],
               ),
             ),
+            if (verrouille)
+              const Icon(Icons.lock_outline_rounded,
+                  color: AppColors.textHint, size: 18),
             if (trailingText != null)
               Text(
                 trailingText,

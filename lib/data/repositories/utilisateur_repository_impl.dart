@@ -1,3 +1,4 @@
+import '../../core/utils/formatters.dart';
 import '../../domain/entities/demande_inscription.dart';
 import '../../domain/entities/recapitulatif.dart';
 import '../../domain/entities/solde.dart';
@@ -32,8 +33,14 @@ class UtilisateurRepositoryImpl implements UtilisateurRepository {
   }
 
   @override
-  Future<Recapitulatif> recapitulatif() async {
-    final reponse = await _remote.recapitulatif();
+  Future<Recapitulatif> recapitulatif({
+    DateTime? dateDebut,
+    DateTime? dateFin,
+  }) async {
+    final reponse = await _remote.recapitulatif(
+      dateDebut: dateDebut == null ? null : Formatters.dateApi(dateDebut),
+      dateFin: dateFin == null ? null : Formatters.dateApi(dateFin),
+    );
     return Recapitulatif.depuisJson(reponse.donnees);
   }
 

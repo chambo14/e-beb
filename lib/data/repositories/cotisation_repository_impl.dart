@@ -34,6 +34,14 @@ class CotisationRepositoryImpl implements CotisationRepository {
   }
 
   @override
+  Future<List<SuggestionTypeCotisation>> suggestionsTypesPersonnalises() async {
+    final reponse = await _remote.suggestionsTypesPersonnalises();
+    return reponse.liste
+        .map(SuggestionTypeCotisation.depuisJson)
+        .toList(growable: false);
+  }
+
+  @override
   Future<TypeCotisation> ajouterTypePersonnalise({
     required String libelle,
     required String code,

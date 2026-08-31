@@ -13,6 +13,10 @@ abstract class CotisationRepository {
     required bool estActif,
   });
 
+  /// Suggestions de types déjà créés par d'autres utilisateurs, pour éviter
+  /// les doublons de nommage à la création d'une nouvelle cotisation.
+  Future<List<SuggestionTypeCotisation>> suggestionsTypesPersonnalises();
+
   Future<TypeCotisation> ajouterTypePersonnalise({
     required String libelle,
     required String code,

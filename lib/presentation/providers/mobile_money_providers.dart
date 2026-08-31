@@ -62,6 +62,12 @@ final comptesMobileMoneyProvider =
       ComptesMobileMoneyController.new,
     );
 
+/// Moyens de paiement actifs proposés par la plateforme (Wave, Orange Money…),
+/// utilisé pour choisir le compte principal à l'inscription et dans le profil.
+final moyensPaiementProvider = FutureProvider<List<MoyenPaiement>>(
+  (ref) => ref.watch(mobileMoneyRepositoryProvider).moyensPaiement(),
+);
+
 /// Compte sur lequel les virements sont effectués par défaut.
 final comptePrincipalProvider = Provider<CompteMobileMoney?>((ref) {
   final comptes = ref.watch(comptesMobileMoneyProvider).valueOrNull;

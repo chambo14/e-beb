@@ -110,6 +110,13 @@ class Utilisateur {
 
   String get nomComplet => '$prenom $nom'.trim();
 
+  /// `true` une fois le dossier KYC validé par un administrateur.
+  bool get estActif => statut?.toUpperCase() == 'ACTIF';
+
+  /// `true` tant que les documents sont soumis mais pas encore vérifiés —
+  /// distinct d'un compte suspendu ou rejeté, qui a son propre traitement.
+  bool get enAttenteVerification => statut?.toUpperCase() == 'EN_ATTENTE';
+
   String get initiales {
     final p = prenom.isNotEmpty ? prenom[0] : '';
     final n = nom.isNotEmpty ? nom[0] : '';
@@ -121,6 +128,21 @@ class Utilisateur {
   factory Utilisateur.depuisJson(Map<String, dynamic> json) {
     final racine =
         Json.objet(json, ['utilisateur', 'user', 'profil']) ?? json;
+
+    // `UserResource` imbrique les montants déclarés sous `declarationRevenu`
+    // (jamais à la racine) — sans ce sous-objet, ces montants restaient
+    // toujours nuls malgré des données bien présentes en base.
+    final declaration =
+        Json.objet(racine, ['declarationRevenu', 'declaration_revenu']) ??
+            const {};
+
+    // Idem pour les documents KYC : `documentKYCs` est une *liste* (un
+    // utilisateur peut soumettre plusieurs pièces), avec des clés propres
+    // (`photo_selfie`, `document_recto`, `document_verso`) — jamais des
+    // champs `url_*` à la racine. On retient le document le plus récent.
+    final documentsKyc = Json.objets(racine, ['documentKYCs', 'document_kyc']);
+    final documentKyc =
+        documentsKyc.isEmpty ? const <String, dynamic>{} : documentsKyc.first;
 
     return Utilisateur(
       id: Json.texteOu(racine, ['id', 'uuid', 'utilisateur_id']),
@@ -151,32 +173,44 @@ class Utilisateur {
       categorieProfessionnelle: Json.texte(racine, [
         'categorie_professionnelle',
       ]),
-      montantRevenu: Json.decimal(racine, ['montant_revenu', 'revenu']),
+      montantRevenu: Json.decimal(declaration, ['montant_revenu']) ??
+          Json.decimal(racine, ['montant_revenu', 'revenu']),
       dateDebutActivite: Json.date(racine, ['date_debut_activite']),
       villeActivite: Json.texte(racine, ['ville_activite']),
       quartierActivite: Json.texte(racine, ['quartier_activite']),
       communeSousPrefectureActivite: Json.texte(racine, [
         'commune_sous_prefecture_activite',
       ]),
-      typeDocument: Json.texte(racine, ['type_document']),
-      numeroDocument: Json.texte(racine, ['numero_document']),
-      documentEtablieLe: Json.date(racine, ['document_etablie_le']),
-      documentExpireLe: Json.date(racine, ['document_expire_le']),
-      urlRecto: Json.texte(racine, ['url_recto']),
-      urlVerso: Json.texte(racine, ['url_verso']),
-      urlSelfie: Json.texte(racine, ['url_selfie']),
-      montantCotisationRegimeBase: Json.decimal(racine, [
-        'montant_cotisation_regime_base',
-      ]),
-      montantCotisationRegimeComplementaire: Json.decimal(racine, [
-        'montant_cotisation_regime_complementaire',
-      ]),
-      montantCotisationMensuelle: Json.decimal(racine, [
-        'montant_cotisation_mensuelle',
-      ]),
-      montantCotisationTrimestrielle: Json.decimal(racine, [
-        'montant_cotisation_trimestrielle',
-      ]),
+      typeDocument: Json.texte(documentKyc, ['type_document']) ??
+          Json.texte(racine, ['type_document']),
+      numeroDocument: Json.texte(documentKyc, ['numero_document']) ??
+          Json.texte(racine, ['numero_document']),
+      documentEtablieLe: Json.date(documentKyc, ['document_etablie_le']) ??
+          Json.date(racine, ['document_etablie_le']),
+      documentExpireLe: Json.date(documentKyc, ['document_expire_le']) ??
+          Json.date(racine, ['document_expire_le']),
+      urlRecto: Json.texte(documentKyc, ['document_recto', 'url_recto']) ??
+          Json.texte(racine, ['url_recto']),
+      urlVerso: Json.texte(documentKyc, ['document_verso', 'url_verso']) ??
+          Json.texte(racine, ['url_verso']),
+      urlSelfie: Json.texte(documentKyc, ['photo_selfie', 'url_selfie']) ??
+          Json.texte(racine, ['url_selfie']),
+      montantCotisationRegimeBase:
+          Json.decimal(declaration, ['montant_cotisation_regime_base']) ??
+              Json.decimal(racine, ['montant_cotisation_regime_base']),
+      montantCotisationRegimeComplementaire: Json.decimal(
+            declaration,
+            ['montant_cotisation_regime_complementaire'],
+          ) ??
+          Json.decimal(racine, ['montant_cotisation_regime_complementaire']),
+      montantCotisationMensuelle:
+          Json.decimal(declaration, ['montant_cotisation_mensuelle']) ??
+              Json.decimal(racine, ['montant_cotisation_mensuelle']),
+      montantCotisationTrimestrielle: Json.decimal(
+            declaration,
+            ['montant_cotisation_trimestrielle'],
+          ) ??
+          Json.decimal(racine, ['montant_cotisation_trimestrielle']),
       statut: Json.texte(racine, ['statut', 'status', 'etat']),
       codePinDefini: Json.booleen(racine, [
         'code_pin_defini',

@@ -52,7 +52,7 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<String> definirCodePin({
+  Future<SessionAuth> definirCodePin({
     required String telephone,
     required String codePin,
   }) async {
@@ -60,7 +60,7 @@ class AuthRepositoryImpl implements AuthRepository {
       telephone: telephone,
       codePin: codePin,
     );
-    return reponse.message ?? 'Code PIN enregistré.';
+    return _ouvrirSession(reponse.donnees, telephone);
   }
 
   @override

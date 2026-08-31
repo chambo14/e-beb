@@ -25,6 +25,9 @@ class CotisationRemoteDataSource {
     },
   );
 
+  Future<ApiEnvelope> suggestionsTypesPersonnalises() =>
+      _client.get(ApiEndpoints.suggestionsTypesCotisationPersonnalises);
+
   Future<ApiEnvelope> ajouterTypePersonnalise(Map<String, dynamic> corps) =>
       _client.post(ApiEndpoints.typesCotisationPersonnalises, body: corps);
 

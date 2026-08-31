@@ -4,16 +4,19 @@ import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/utils/qr_data.dart';
+import '../../../domain/entities/compte_mobile_money.dart';
 import '../../../domain/entities/operation.dart';
 import '../../../domain/entities/recapitulatif.dart';
 import '../../../domain/entities/solde.dart';
 import '../../../domain/entities/utilisateur.dart';
+import '../../../presentation/providers/mobile_money_providers.dart';
 import '../../../presentation/providers/notification_providers.dart';
 import '../../../presentation/providers/session_provider.dart';
 import '../../../presentation/providers/transaction_providers.dart';
 import '../../../presentation/providers/utilisateur_providers.dart';
 import '../../auth/screens/settings_page.dart';
+import '../screens/recapitulatif_general_screen.dart';
+import '../screens/toutes_transactions_screen.dart';
 
 class AccueilTab extends ConsumerWidget {
   const AccueilTab({super.key});
@@ -50,11 +53,18 @@ class AccueilTab extends ConsumerWidget {
                     );
                   },
                 ),
+                if (utilisateur?.enAttenteVerification == true) ...[
+                  const SizedBox(height: 16),
+                  const _BanniereVerificationEnCours(),
+                ],
                 const SizedBox(height: 24),
                 ref
                     .watch(soldeProvider)
                     .when(
-                      data: (solde) => _SoldeCard(solde: solde),
+                      data: (solde) => _SoldeCard(
+                        solde: solde,
+                        recapitulatif: recapitulatif.valueOrNull,
+                      ),
                       loading: () => const _BlocChargement(hauteur: 150),
                       error: (e, _) => _BlocErreur(
                         message: _messageErreur(e),
@@ -62,16 +72,9 @@ class AccueilTab extends ConsumerWidget {
                       ),
                     ),
                 const SizedBox(height: 24),
-                _NetworkCardsSection(user: utilisateur),
+                const _NetworkCardsSection(),
                 const SizedBox(height: 32),
-                recapitulatif.when(
-                  data: (recap) => _CotisationTracker(recapitulatif: recap),
-                  loading: () => const _BlocChargement(hauteur: 220),
-                  error: (e, _) => _BlocErreur(
-                    message: _messageErreur(e),
-                    onRetry: () => ref.invalidate(recapitulatifProvider),
-                  ),
-                ),
+                const _CotisationTracker(),
                 const SizedBox(height: 32),
                 operations.when(
                   data: (liste) => _TransactionsList(operations: liste),
@@ -153,6 +156,65 @@ class _BlocErreur extends StatelessWidget {
   }
 }
 
+/// Photo selfie du dossier KYC (`DocumentKYC.photo_selfie`) si disponible,
+/// sinon repli sur les initiales — jamais d'image cassée affichée.
+class _AvatarUtilisateur extends StatelessWidget {
+  final Utilisateur? user;
+  const _AvatarUtilisateur({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = user?.urlSelfie;
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          colors: [AppColors.primaryBlue, AppColors.purple],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryBlue.withValues(alpha: 0.30),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: photo == null || photo.isEmpty
+          ? _Initiales(user: user)
+          : Image.network(
+              photo,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) =>
+                  _Initiales(user: user),
+            ),
+    );
+  }
+}
+
+class _Initiales extends StatelessWidget {
+  final Utilisateur? user;
+  const _Initiales({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        user?.initiales ?? '…',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Header utilisateur ───────────────────────────────────────────────────────
 class _UserHeader extends ConsumerWidget {
   final Utilisateur? user;
@@ -168,35 +230,7 @@ class _UserHeader extends ConsumerWidget {
     return Row(
       children: [
         // Avatar
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              colors: [AppColors.primaryBlue, AppColors.purple],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primaryBlue.withValues(alpha: 0.30),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: CircleAvatar(
-            radius: 26,
-            backgroundColor: Colors.transparent,
-            child: Text(
-              user?.initiales ?? '…',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ),
+        _AvatarUtilisateur(user: user),
         const SizedBox(width: 14),
         // Nom + matricule
         Expanded(
@@ -308,15 +342,266 @@ class _UserHeader extends ConsumerWidget {
   }
 }
 
+/// Rappel persistant tant que le dossier KYC n'a pas été validé par un
+/// administrateur (`statut = EN_ATTENTE`). Ouvre un détail rassurant au tap :
+/// ce qui se passe, et ce qui reste déjà utilisable en attendant.
+class _BanniereVerificationEnCours extends StatelessWidget {
+  const _BanniereVerificationEnCours();
+
+  void _ouvrirDetail(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _DetailVerificationSheet(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => _ouvrirDetail(context),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.orange.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.orange.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.orange.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.hourglass_top_rounded,
+                  color: AppColors.orange, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Vérification de vos documents en cours',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                      height: 1.3,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Votre compte sera activé dès la validation. Touchez pour en savoir plus.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.orange, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Détail rassurant de l'état « en attente » : ce qui se passe, combien de
+/// temps ça prend, et ce que l'utilisateur peut déjà faire en attendant.
+class _DetailVerificationSheet extends StatelessWidget {
+  const _DetailVerificationSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.only(top: 60),
+        decoration: const BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Center(
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: AppColors.orange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Icon(Icons.hourglass_top_rounded,
+                      color: AppColors.orange, size: 30),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Vérification en cours',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Votre pièce d\'identité et vos informations ont bien été '
+                'reçues. Notre équipe les vérifie avant d\'activer votre '
+                'compte — vous recevrez une notification dès que ce sera fait.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 13.5, color: AppColors.textSecondary, height: 1.5),
+              ),
+              const SizedBox(height: 24),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.06),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Déjà disponible en attendant',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(height: 12),
+                    const _PointDisponible(
+                        texte: 'Choisir votre compte mobile money principal'),
+                    const SizedBox(height: 8),
+                    const _PointDisponible(
+                        texte: 'Configurer vos taux de prélèvement (CNPS, CMU, épargne…)'),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1, color: AppColors.border),
+                    const SizedBox(height: 12),
+                    const _PointIndisponible(
+                        texte: 'Modifier votre profil et vos informations personnelles'),
+                    const SizedBox(height: 8),
+                    const _PointIndisponible(
+                        texte: 'Ajouter de nouvelles cotisations personnalisées'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(minimumSize: const Size(0, 52)),
+                  child: const Text('Compris'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PointDisponible extends StatelessWidget {
+  final String texte;
+  const _PointDisponible({required this.texte});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.check_circle_rounded,
+            color: AppColors.success, size: 16),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            texte,
+            style: const TextStyle(
+                fontSize: 12.5, color: AppColors.textPrimary, height: 1.4),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PointIndisponible extends StatelessWidget {
+  final String texte;
+  const _PointIndisponible({required this.texte});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.lock_outline_rounded,
+            color: AppColors.textHint, size: 16),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            texte,
+            style: const TextStyle(
+                fontSize: 12.5, color: AppColors.textSecondary, height: 1.4),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ─── Carte solde ─────────────────────────────────────────────────────────────
 
 class _SoldeCard extends StatelessWidget {
   final Solde solde;
-  const _SoldeCard({required this.solde});
+
+  /// Récapitulatif du mois courant, pour le « Total prélevé » — `null` tant
+  /// qu'il n'a pas fini de charger (le solde s'affiche déjà sans attendre).
+  final Recapitulatif? recapitulatif;
+
+  const _SoldeCard({required this.solde, this.recapitulatif});
 
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0', 'fr_FR');
+    final totalPreleveMois = recapitulatif?.totalPrelevementsHorsEpargne;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(22),
@@ -360,17 +645,52 @@ class _SoldeCard extends StatelessWidget {
           Row(
             children: [
               _SoldeStat(
-                label: 'Total reçu',
-                value: '+${fmt.format(solde.totalRecu)} ${solde.devise}',
+                label: 'Total épargné',
+                value: '+${fmt.format(solde.epargne)} ${solde.devise}',
                 color: const Color(0xFF7FFFB2),
               ),
               const SizedBox(width: 24),
               _SoldeStat(
-                label: 'Total prélevé',
-                value: '-${fmt.format(solde.totalPreleve)} ${solde.devise}',
+                label: 'Prélevé ce mois',
+                value: totalPreleveMois == null
+                    ? '…'
+                    : '-${fmt.format(totalPreleveMois)} ${solde.devise}',
                 color: Colors.white54,
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const RecapitulatifGeneralScreen(),
+              ),
+            ),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.bar_chart_rounded,
+                      color: Colors.white, size: 16),
+                  SizedBox(width: 8),
+                  Text(
+                    'Voir le récapitulatif détaillé',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -424,13 +744,45 @@ class _TransactionsList extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Transactions récentes',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Transactions récentes',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const ToutesTransactionsScreen(),
+                ),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.receipt_long_rounded,
+                        color: AppColors.primaryBlue, size: 15),
+                    SizedBox(width: 5),
+                    Text(
+                      'Voir tout',
+                      style: TextStyle(
+                        color: AppColors.primaryBlue,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Container(
@@ -562,66 +914,40 @@ class _TransactionsList extends StatelessWidget {
   }
 }
 
-// ─── Données réseaux ──────────────────────────────────────────────────────────
+// ─── Comptes mobile money réels de l'utilisateur ──────────────────────────────
 
-class _NetworkInfo {
-  final String name;
-  final String tag;
-  final List<Color> gradient;
-  final int seed;
-  final bool available;
-
-  const _NetworkInfo({
-    required this.name,
-    required this.tag,
-    required this.gradient,
-    required this.seed,
-    this.available = true,
-  });
+/// `#RRGGBB` → [Color] ; `null` si absent ou mal formé — jamais de couleur
+/// devinée par nom d'opérateur côté mobile (voir `moyen_paiements.couleur`).
+Color? _couleurDepuisHex(String? hex) {
+  if (hex == null) return null;
+  final nettoye = hex.trim().replaceFirst('#', '');
+  if (nettoye.length != 6) return null;
+  final valeur = int.tryParse(nettoye, radix: 16);
+  return valeur == null ? null : Color(0xFF000000 | valeur);
 }
 
-const _networks = [
-  _NetworkInfo(
-    name: 'Wave',
-    tag: 'Mobile Money',
-    gradient: [Color(0xFF1ECFEE), Color(0xFF03A9C7)],
-    seed: 42,
-  ),
-  _NetworkInfo(
-    name: 'Orange Money',
-    tag: 'Mobile Money',
-    gradient: [Color(0xFF000000), Color(0xFF434343)],
-    seed: 77,
-    available: false,
-  ),
-  _NetworkInfo(
-    name: 'MTN MoMo',
-    tag: 'Mobile Money',
-    gradient: [Color(0xFFFFCC00), Color(0xFFE6A800)],
-    seed: 13,
-    available: false,
-  ),
-  _NetworkInfo(
-    name: 'Moov Money',
-    tag: 'Mobile Money',
-    gradient: [Color(0xFF1565C0), Color(0xFF003580)],
-    seed: 99,
-    available: false,
-  ),
-];
+/// Comptes triés avec le compte principal en tête — l'API les renvoie déjà
+/// dans cet ordre, ce tri est une garantie supplémentaire côté client.
+List<CompteMobileMoney> _triesPrincipalEnTete(List<CompteMobileMoney> comptes) {
+  final tries = [...comptes];
+  tries.sort((a, b) {
+    if (a.estPrincipal == b.estPrincipal) return 0;
+    return a.estPrincipal ? -1 : 1;
+  });
+  return tries;
+}
 
 // ─── Section cartes réseau (PageView) ────────────────────────────────────────
 
-
-class _NetworkCardsSection extends StatefulWidget {
-  final Utilisateur? user;
-  const _NetworkCardsSection({required this.user});
+class _NetworkCardsSection extends ConsumerStatefulWidget {
+  const _NetworkCardsSection();
 
   @override
-  State<_NetworkCardsSection> createState() => _NetworkCardsSectionState();
+  ConsumerState<_NetworkCardsSection> createState() =>
+      _NetworkCardsSectionState();
 }
 
-class _NetworkCardsSectionState extends State<_NetworkCardsSection> {
+class _NetworkCardsSectionState extends ConsumerState<_NetworkCardsSection> {
   final _pageController = PageController(viewportFraction: 0.88);
   int _currentPage = 0;
 
@@ -633,84 +959,137 @@ class _NetworkCardsSectionState extends State<_NetworkCardsSection> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // PageView des cartes
-        SizedBox(
-          height: 230,
-          child: PageView.builder(
-            controller: _pageController,
-            itemCount: _networks.length,
-            onPageChanged: (i) => setState(() => _currentPage = i),
-            itemBuilder: (_, i) {
-              final net = _networks[i];
-              return AnimatedScale(
-                scale: _currentPage == i ? 1.0 : 0.93,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: _NetworkCard(
-                    network: net,
-                    telephone: widget.user?.telephone ?? '',
-                    cnpsNumero: widget.user?.numeroCnps ?? '',
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+    final comptesAsync = ref.watch(comptesMobileMoneyProvider);
 
-        const SizedBox(height: 14),
+    return comptesAsync.when(
+      loading: () => const SizedBox(
+        height: 230,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (erreur, _) => _CarteAucunCompte(
+        message: erreur is ApiException
+            ? erreur.message
+            : 'Impossible de charger vos comptes mobile money.',
+        onRetry: () =>
+            ref.read(comptesMobileMoneyProvider.notifier).recharger(),
+      ),
+      data: (comptesBruts) {
+        final comptes = _triesPrincipalEnTete(comptesBruts);
+        if (comptes.isEmpty) {
+          return const _CarteAucunCompte(
+            message: 'Aucun compte mobile money configuré pour le moment. '
+                'Ajoutez-en un depuis votre profil pour générer vos QR codes.',
+          );
+        }
 
-        // Indicateurs de page
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(_networks.length, (i) {
-            final active = i == _currentPage;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: active ? 20 : 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: active
-                    ? _networks[i].gradient.first
-                    : AppColors.border,
-                borderRadius: BorderRadius.circular(3),
+        return Column(
+          children: [
+            // PageView des cartes — un seul compte : le PageView reste, sans
+            // indicateurs de page superflus.
+            SizedBox(
+              height: 230,
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: comptes.length,
+                onPageChanged: (i) => setState(() => _currentPage = i),
+                itemBuilder: (_, i) {
+                  final compte = comptes[i];
+                  return AnimatedScale(
+                    scale: _currentPage == i ? 1.0 : 0.93,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: _NetworkCard(compte: compte),
+                    ),
+                  );
+                },
               ),
-            );
-          }),
-        ),
-      ],
+            ),
+
+            if (comptes.length > 1) ...[
+              const SizedBox(height: 14),
+              // Indicateurs de page
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(comptes.length, (i) {
+                  final active = i == _currentPage;
+                  final couleur = _couleurDepuisHex(
+                        comptes[i].moyenPaiement?.couleur,
+                      ) ??
+                      AppColors.primaryBlue;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: active ? 20 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: active ? couleur : AppColors.border,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
 
-// ─── Carte d'un réseau ────────────────────────────────────────────────────────
+/// État vide ou d'erreur, à la place du carrousel.
+class _CarteAucunCompte extends StatelessWidget {
+  final String message;
+  final VoidCallback? onRetry;
+
+  const _CarteAucunCompte({required this.message, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 230,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.qr_code_2_rounded,
+              color: AppColors.textHint, size: 32),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontSize: 12.5, color: AppColors.textSecondary, height: 1.5),
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 8),
+            TextButton(onPressed: onRetry, child: const Text('Réessayer')),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Carte d'un compte ────────────────────────────────────────────────────────
 
 class _NetworkCard extends StatelessWidget {
-  final _NetworkInfo network;
-  final String telephone;
-  final String cnpsNumero;
+  final CompteMobileMoney compte;
 
-  const _NetworkCard({
-    required this.network,
-    required this.telephone,
-    required this.cnpsNumero,
-  });
-
-  bool get _isWave => network.name == 'Wave';
+  const _NetworkCard({required this.compte});
 
   void _showExpanded(BuildContext context) {
     Navigator.push(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => _QrScanPage(
-          network: network,
-          telephone: telephone,
-          cnpsNumero: cnpsNumero,
-        ),
+        pageBuilder: (_, __, ___) => _QrScanPage(compte: compte),
         transitionsBuilder: (_, anim, __, child) => FadeTransition(
           opacity: anim,
           child: SlideTransition(
@@ -728,21 +1107,24 @@ class _NetworkCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final couleur =
+        _couleurDepuisHex(compte.moyenPaiement?.couleur) ?? AppColors.primaryBlue;
+    final qr = compte.qrPayload;
+
     return GestureDetector(
-      onTap: () => _showExpanded(context),
+      onTap: qr == null ? null : () => _showExpanded(context),
       child: Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          colors: network.gradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: LinearGradient(
+            colors: [couleur, Color.lerp(couleur, Colors.black, 0.35)!],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
-      ),
-      child: Stack(
-        children: [
-          // Background Wave : motif losanges
-          if (_isWave)
+        child: Stack(
+          children: [
+            // Motif décoratif générique (indépendant de l'opérateur).
             Positioned.fill(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(24),
@@ -750,83 +1132,154 @@ class _NetworkCard extends StatelessWidget {
               ),
             ),
 
-          // Cercles décoratifs pour les autres réseaux
-          if (!_isWave) ...[
-            Positioned(top: -30, right: -30, child: _Circle(size: 120, opacity: 0.10)),
-            Positioned(bottom: -20, left: -20, child: _Circle(size: 90, opacity: 0.07)),
-          ],
-
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 160,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Colors.white, width: 2),
+            Positioned(
+              top: 14,
+              left: 18,
+              right: 18,
+              child: Row(
+                children: [
+                  _LogoMoyen(moyen: compte.moyenPaiement, taille: 26),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      compte.operateur,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
-                          child: QrImageView(
-                            data: buildQrPayload(
-                              network: network.name,
-                              phone: telephone,
-                              cnpsNumero: cnpsNumero,
-                            ),
-                            version: QrVersions.auto,
-                            eyeStyle: const QrEyeStyle(
-                              eyeShape: QrEyeShape.square,
-                              color: Colors.black,
-                            ),
-                            dataModuleStyle: const QrDataModuleStyle(
-                              dataModuleShape: QrDataModuleShape.square,
-                              color: Colors.black,
-                            ),
-                            backgroundColor: Colors.white,
-                          ),
+                  if (compte.estPrincipal)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'Principal',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(18),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.camera_alt_rounded,
-                                size: 12, color: Colors.grey.shade600),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Scanner',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
+
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 160,
+                    height: 160,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+                            child: qr == null
+                                ? const Center(
+                                    child: Icon(Icons.qr_code_2_rounded,
+                                        color: AppColors.textHint, size: 40),
+                                  )
+                                : QrImageView(
+                                    data: qr,
+                                    version: QrVersions.auto,
+                                    eyeStyle: const QrEyeStyle(
+                                      eyeShape: QrEyeShape.square,
+                                      color: Colors.black,
+                                    ),
+                                    dataModuleStyle: const QrDataModuleStyle(
+                                      dataModuleShape: QrDataModuleShape.square,
+                                      color: Colors.black,
+                                    ),
+                                    backgroundColor: Colors.white,
+                                  ),
+                          ),
+                        ),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: const BorderRadius.vertical(
+                              bottom: Radius.circular(18),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.camera_alt_rounded,
+                                  size: 12, color: Colors.grey.shade600),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Scanner',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+/// Logo réel du moyen de paiement (`logo_url`), repli sur une icône
+/// générique s'il est absent ou ne charge pas — jamais de logo par opérateur
+/// codé en dur.
+class _LogoMoyen extends StatelessWidget {
+  final MoyenPaiement? moyen;
+  final double taille;
+
+  const _LogoMoyen({required this.moyen, required this.taille});
+
+  @override
+  Widget build(BuildContext context) {
+    final url = moyen?.logoUrl;
+    return Container(
+      width: taille,
+      height: taille,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(taille * 0.3),
       ),
+      clipBehavior: Clip.antiAlias,
+      child: url == null || url.isEmpty
+          ? Icon(Icons.phone_android_rounded,
+              color: Colors.white, size: taille * 0.6)
+          : Image.network(
+              url,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) => Icon(
+                Icons.phone_android_rounded,
+                color: Colors.white,
+                size: taille * 0.6,
+              ),
+            ),
     );
   }
 }
@@ -834,41 +1287,30 @@ class _NetworkCard extends StatelessWidget {
 // ─── Page QR scan plein écran ─────────────────────────────────────────────────
 
 class _QrScanPage extends StatelessWidget {
-  final _NetworkInfo network;
-  final String telephone;
-  final String cnpsNumero;
+  final CompteMobileMoney compte;
 
-  const _QrScanPage({
-    required this.network,
-    required this.telephone,
-    required this.cnpsNumero,
-  });
-
-  bool get _isWave => network.name == 'Wave';
+  const _QrScanPage({required this.compte});
 
   @override
   Widget build(BuildContext context) {
+    final couleur =
+        _couleurDepuisHex(compte.moyenPaiement?.couleur) ?? AppColors.primaryBlue;
+    final qr = compte.qrPayload;
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: network.gradient,
+            colors: [couleur, Color.lerp(couleur, Colors.black, 0.35)!],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
         ),
         child: Stack(
           children: [
-            // Fond Wave
-            if (_isWave)
-              Positioned.fill(
-                child: CustomPaint(painter: _WaveBgPainter()),
-              ),
-            // Cercles pour les autres
-            if (!_isWave) ...[
-              Positioned(top: -100, right: -80, child: _Circle(size: 320, opacity: 0.10)),
-              Positioned(bottom: -80, left: -80, child: _Circle(size: 260, opacity: 0.07)),
-            ],
+            Positioned.fill(
+              child: CustomPaint(painter: _WaveBgPainter()),
+            ),
 
             SafeArea(
               child: Column(
@@ -895,13 +1337,18 @@ class _QrScanPage extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 16),
-                        Text(
-                          network.name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.3,
+                        _LogoMoyen(moyen: compte.moyenPaiement, taille: 30),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            compte.operateur,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.3,
+                            ),
                           ),
                         ),
                       ],
@@ -933,24 +1380,29 @@ class _QrScanPage extends StatelessWidget {
                       children: [
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-                          child: QrImageView(
-                            data: buildQrPayload(
-                              network: network.name,
-                              phone: telephone,
-                              cnpsNumero: cnpsNumero,
-                            ),
-                            version: QrVersions.auto,
-                            size: 260,
-                            eyeStyle: const QrEyeStyle(
-                              eyeShape: QrEyeShape.square,
-                              color: Colors.black,
-                            ),
-                            dataModuleStyle: const QrDataModuleStyle(
-                              dataModuleShape: QrDataModuleShape.square,
-                              color: Colors.black,
-                            ),
-                            backgroundColor: Colors.white,
-                          ),
+                          child: qr == null
+                              ? const SizedBox(
+                                  width: 260,
+                                  height: 260,
+                                  child: Center(
+                                    child: Icon(Icons.qr_code_2_rounded,
+                                        color: AppColors.textHint, size: 64),
+                                  ),
+                                )
+                              : QrImageView(
+                                  data: qr,
+                                  version: QrVersions.auto,
+                                  size: 260,
+                                  eyeStyle: const QrEyeStyle(
+                                    eyeShape: QrEyeShape.square,
+                                    color: Colors.black,
+                                  ),
+                                  dataModuleStyle: const QrDataModuleStyle(
+                                    dataModuleShape: QrDataModuleShape.square,
+                                    color: Colors.black,
+                                  ),
+                                  backgroundColor: Colors.white,
+                                ),
                         ),
                         Container(
                           width: double.infinity,
@@ -984,7 +1436,7 @@ class _QrScanPage extends StatelessWidget {
 
                   const SizedBox(height: 24),
 
-                  // Numéro de téléphone masqué
+                  // Numéro du compte
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     decoration: BoxDecoration(
@@ -992,7 +1444,7 @@ class _QrScanPage extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      telephone,
+                      compte.numeroCompte,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15,
@@ -1066,39 +1518,17 @@ class _WaveBgPainter extends CustomPainter {
   bool shouldRepaint(_WaveBgPainter _) => false;
 }
 
-// ─── Cercle décoratif ─────────────────────────────────────────────────────────
-
-class _Circle extends StatelessWidget {
-  final double size;
-  final double opacity;
-
-  const _Circle({required this.size, required this.opacity});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.white.withValues(alpha: opacity),
-      ),
-    );
-  }
-}
-
 // ─── Suivi cotisations ────────────────────────────────────────────────────────
 
-class _CotisationTracker extends StatefulWidget {
-  final Recapitulatif recapitulatif;
-
-  const _CotisationTracker({required this.recapitulatif});
+class _CotisationTracker extends ConsumerStatefulWidget {
+  const _CotisationTracker();
 
   @override
-  State<_CotisationTracker> createState() => _CotisationTrackerState();
+  ConsumerState<_CotisationTracker> createState() =>
+      _CotisationTrackerState();
 }
 
-class _CotisationTrackerState extends State<_CotisationTracker> {
+class _CotisationTrackerState extends ConsumerState<_CotisationTracker> {
   int _tab = 0;
 
   static const _moisLabels = [
@@ -1109,15 +1539,23 @@ class _CotisationTrackerState extends State<_CotisationTracker> {
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0', 'fr_FR');
-    final c = widget.recapitulatif;
     final isMois = _tab == 0;
 
-    final verse    = isMois ? c.totalVerseMensuel : c.totalVerseAnnuel;
-    final cible    = isMois ? c.totalCibleMensuel : c.totalCibleAnnuel;
-    final progress = isMois ? c.progressionMensuelle : c.progressionAnnuelle;
-    final color    = isMois ? AppColors.primaryBlue : AppColors.purple;
-    final icon     = isMois ? '📅' : '📆';
-    final titre    = isMois
+    // Cible : déclarée par l'utilisateur à l'inscription (montant de
+    // cotisation CNPS mensuel visé), reportée sur l'année à défaut d'un
+    // objectif annuel distinct — il n'existe pas de « cible » côté API,
+    // seuls les montants réellement versés le sont.
+    final utilisateur = ref.watch(utilisateurCourantProvider);
+    final cibleMensuelle = utilisateur?.montantCotisationMensuelle ?? 0;
+    final cible = isMois ? cibleMensuelle : cibleMensuelle * 12;
+
+    final recapAsync = isMois
+        ? ref.watch(recapitulatifProvider)
+        : ref.watch(recapitulatifPeriodeProvider(PeriodeRecap.annee));
+
+    final color = isMois ? AppColors.primaryBlue : AppColors.purple;
+    final icon = isMois ? '📅' : '📆';
+    final titre = isMois
         ? 'Ce mois — ${_moisLabels[DateTime.now().month - 1]}'
         : 'Annuel ${DateTime.now().year}';
 
@@ -1178,14 +1616,42 @@ class _CotisationTrackerState extends State<_CotisationTracker> {
               ],
             ),
             padding: const EdgeInsets.all(20),
-            child: _ProgressBloc(
-              icon: icon,
-              titre: titre,
-              verse: verse,
-              cible: cible,
-              progress: progress,
-              fmt: fmt,
-              color: color,
+            child: recapAsync.when(
+              loading: () => const SizedBox(
+                height: 88,
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              ),
+              error: (erreur, _) => SizedBox(
+                height: 88,
+                child: Center(
+                  child: Text(
+                    erreur is ApiException
+                        ? erreur.message
+                        : 'Impossible de charger vos cotisations.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+              data: (recap) {
+                final verse = recap.totalCotisationCnps;
+                final progress =
+                    cible <= 0 ? 0.0 : (verse / cible).clamp(0.0, 1.0);
+                return _ProgressBloc(
+                  icon: icon,
+                  titre: titre,
+                  verse: verse,
+                  cible: cible,
+                  progress: progress,
+                  fmt: fmt,
+                  color: color,
+                );
+              },
             ),
           ),
         ),

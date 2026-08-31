@@ -19,8 +19,10 @@ abstract class AuthRepository {
   /// Redemande l'envoi d'un code OTP.
   Future<String> renvoyerOtp(String telephone);
 
-  /// Définit le code PIN à la fin de l'inscription.
-  Future<String> definirCodePin({
+  /// Définit le code PIN à la fin de l'inscription et ouvre la session : le
+  /// back-end connecte l'utilisateur et renvoie un jeton dans la même
+  /// réponse (`{user, token}`), comme pour la connexion classique.
+  Future<SessionAuth> definirCodePin({
     required String telephone,
     required String codePin,
   });

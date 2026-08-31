@@ -8,6 +8,12 @@ class MobileMoneyRepositoryImpl implements MobileMoneyRepository {
   const MobileMoneyRepositoryImpl(this._remote);
 
   @override
+  Future<List<MoyenPaiement>> moyensPaiement() async {
+    final reponse = await _remote.moyensPaiement();
+    return reponse.liste.map(MoyenPaiement.depuisJson).toList(growable: false);
+  }
+
+  @override
   Future<List<CompteMobileMoney>> comptes() async {
     final reponse = await _remote.comptes();
     return reponse.liste

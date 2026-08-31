@@ -8,6 +8,9 @@ class MobileMoneyRemoteDataSource {
 
   const MobileMoneyRemoteDataSource(this._client);
 
+  Future<ApiEnvelope> moyensPaiement() =>
+      _client.get(ApiEndpoints.moyensPaiement);
+
   Future<ApiEnvelope> comptes() =>
       _client.get(ApiEndpoints.comptesMobileMoney);
 

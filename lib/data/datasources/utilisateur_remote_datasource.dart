@@ -13,8 +13,16 @@ class UtilisateurRemoteDataSource {
 
   Future<ApiEnvelope> solde() => _client.get(ApiEndpoints.solde);
 
-  Future<ApiEnvelope> recapitulatif() =>
-      _client.get(ApiEndpoints.recapitulatif);
+  /// Sans paramètre : mois courant (comportement par défaut du back-end).
+  /// Avec `dateDebut`/`dateFin` : récapitulatif sur cet intervalle libre
+  /// (permet de couvrir une semaine ou une année entière côté appelant).
+  Future<ApiEnvelope> recapitulatif({String? dateDebut, String? dateFin}) =>
+      _client.get(
+        ApiEndpoints.recapitulatif,
+        queryParameters: dateDebut == null || dateFin == null
+            ? null
+            : {'date_debut': dateDebut, 'date_fin': dateFin},
+      );
 
   /// PATCH via method spoofing (multipart), comme dans la collection Postman.
   Future<ApiEnvelope> mettreAJourProfil(MiseAJourProfil mise) => _client

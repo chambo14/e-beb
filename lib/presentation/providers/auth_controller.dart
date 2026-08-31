@@ -85,17 +85,29 @@ class AuthController extends AsyncNotifier<String?> {
     );
   }
 
-  /// Définition du code PIN en fin d'inscription.
+  /// Définition du code PIN en fin d'inscription : ouvre la session (jeton
+  /// persisté) comme une connexion classique, faute de quoi les écrans
+  /// suivants (configuration du compte principal, etc.) n'auraient aucun
+  /// jeton à joindre à leurs appels API.
   Future<bool> definirCodePin({
     required String telephoneSaisi,
     required String codePin,
-  }) {
+  }) async {
     final telephone = Formatters.telephoneApi(telephoneSaisi);
-    return _executer(
-      () => ref
+    state = const AsyncLoading();
+    try {
+      final session = await ref
           .read(authRepositoryProvider)
-          .definirCodePin(telephone: telephone, codePin: codePin),
-    );
+          .definirCodePin(telephone: telephone, codePin: codePin);
+      await ref
+          .read(sessionProvider.notifier)
+          .ouvrir(session, telephone: telephone);
+      state = const AsyncData('Code PIN configuré avec succès.');
+      return true;
+    } on ApiException catch (e, st) {
+      state = AsyncError(e, st);
+      return false;
+    }
   }
 
   Future<bool> seDeconnecter() async {

@@ -1,10 +1,13 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/config/moyens_paiement.dart';
+import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/utils/formatters.dart';
+import '../../domain/entities/compte_mobile_money.dart' show MoyenPaiement;
 import '../../domain/entities/type_cotisation.dart';
 import '../../presentation/providers/cotisation_providers.dart';
 import '../../presentation/providers/mobile_money_providers.dart';
@@ -33,7 +36,9 @@ class _AccountSetupFlowState extends ConsumerState<AccountSetupFlow> {
   final _pageController = PageController();
   int _step = 0;
 
-  String _selectedNetwork = 'Wave';
+  /// Id du moyen de paiement choisi comme compte principal, une fois la
+  /// liste chargée (voir [_MainAccountStep]).
+  String? _selectedMoyenPaiementId;
   bool _assuranceActive = false;
   bool _epargneActive = true;
   double _epargneTaux = 10;
@@ -82,10 +87,15 @@ class _AccountSetupFlowState extends ConsumerState<AccountSetupFlow> {
 
   /// Enregistre le compte mobile money principal puis passe à l'étape 2.
   ///
-  /// Si aucun `moyen_paiement_id` n'est encore connu (cf. [MoyensPaiement]),
-  /// l'étape est simplement passée : le compte pourra être ajouté plus tard.
+  /// Si aucun moyen de paiement n'a pu être sélectionné (liste non chargée
+  /// ou vide), l'étape est simplement passée : le compte pourra être ajouté
+  /// plus tard depuis le profil.
   Future<void> _enregistrerCompte() async {
-    final moyenId = MoyensPaiement.idPour(_selectedNetwork);
+    // Si l'utilisateur n'a pas explicitement touché une carte, le premier
+    // moyen de paiement chargé (mis en avant visuellement) reste retenu.
+    final disponibles = ref.read(moyensPaiementProvider).valueOrNull ?? const [];
+    final moyenId = _selectedMoyenPaiementId ??
+        (disponibles.isEmpty ? null : disponibles.first.id);
     if (moyenId == null) {
       _goToStep(1);
       return;
@@ -232,7 +242,7 @@ class _AccountSetupFlowState extends ConsumerState<AccountSetupFlow> {
     // Le profil et les données de l'accueil sont rechargés à l'entrée.
     ref.read(sessionProvider.notifier).rafraichirUtilisateur();
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      MaterialPageRoute(builder: (_) => const HomeScreen(afficherBienvenue: true)),
       (route) => false,
     );
   }
@@ -258,10 +268,10 @@ class _AccountSetupFlowState extends ConsumerState<AccountSetupFlow> {
                   children: [
                     _MainAccountStep(
                       telephone: widget.telephone,
-                      selectedNetwork: _selectedNetwork,
+                      selectedMoyenPaiementId: _selectedMoyenPaiementId,
                       enCours: _enregistrement,
-                      onSelectNetwork: (n) =>
-                          setState(() => _selectedNetwork = n),
+                      onSelectMoyenPaiement: (id) =>
+                          setState(() => _selectedMoyenPaiementId = id),
                       onNext: _enregistrement ? null : _enregistrerCompte,
                     ),
                     Builder(builder: (_) {
@@ -417,57 +427,42 @@ class _AccountSetupFlowState extends ConsumerState<AccountSetupFlow> {
 
 // ─── Étape 1 : Compte principal ───────────────────────────────────────────────
 
-class _NetworkChoice {
-  final String name;
-  final List<Color> gradient;
-  final bool available;
-
-  const _NetworkChoice({
-    required this.name,
-    required this.gradient,
-    this.available = true,
-  });
-}
-
-const _networkChoices = [
-  _NetworkChoice(
-    name: 'Wave',
-    gradient: [Color(0xFF1ECFEE), Color(0xFF03A9C7)],
-  ),
-  _NetworkChoice(
-    name: 'Orange Money',
-    gradient: [Color(0xFF000000), Color(0xFF434343)],
-    available: false,
-  ),
-  _NetworkChoice(
-    name: 'MTN MoMo',
-    gradient: [Color(0xFFFFCC00), Color(0xFFE6A800)],
-    available: false,
-  ),
-  _NetworkChoice(
-    name: 'Moov Money',
-    gradient: [Color(0xFF1565C0), Color(0xFF003580)],
-    available: false,
-  ),
-];
-
-class _MainAccountStep extends StatelessWidget {
+class _MainAccountStep extends ConsumerWidget {
   final String telephone;
-  final String selectedNetwork;
+  final String? selectedMoyenPaiementId;
   final bool enCours;
-  final ValueChanged<String> onSelectNetwork;
+  final ValueChanged<String> onSelectMoyenPaiement;
   final VoidCallback? onNext;
 
   const _MainAccountStep({
     required this.telephone,
-    required this.selectedNetwork,
+    required this.selectedMoyenPaiementId,
     required this.enCours,
-    required this.onSelectNetwork,
+    required this.onSelectMoyenPaiement,
     required this.onNext,
   });
 
+  /// Le moyen marqué par défaut en base (`par_defaut`) prime sur le premier
+  /// de la liste, qui ne sert de repli que si aucun n'est marqué.
+  MoyenPaiement? _moyenParDefaut(List<MoyenPaiement> moyens) {
+    if (moyens.isEmpty) return null;
+    for (final m in moyens) {
+      if (m.parDefaut) return m;
+    }
+    return moyens.first;
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final moyensAsync = ref.watch(moyensPaiementProvider);
+    final moyens = moyensAsync.valueOrNull ?? const [];
+    final chargement = moyensAsync.isLoading && moyens.isEmpty;
+    final enErreur = moyensAsync.hasError && moyens.isEmpty;
+    // Le moyen par défaut en base reste la sélection tant que l'utilisateur
+    // n'a pas explicitement touché une autre carte.
+    final selectionEffective =
+        selectedMoyenPaiementId ?? _moyenParDefaut(moyens)?.id;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
       child: Column(
@@ -504,72 +499,85 @@ class _MainAccountStep extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          ..._networkChoices.map((n) {
-            final isSelected = n.name == selectedNetwork;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: GestureDetector(
-                onTap: n.available ? () => onSelectNetwork(n.name) : null,
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isSelected
-                          ? const Color(0xFF5B21B6)
-                          : AppColors.border,
-                      width: isSelected ? 2 : 1,
+          if (chargement)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (enErreur)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(14),
+                border:
+                    Border.all(color: AppColors.error.withValues(alpha: 0.25)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Impossible de charger les moyens de paiement.',
+                    style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton(
+                    onPressed: () => ref.invalidate(moyensPaiementProvider),
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                    child: const Text('Réessayer'),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...moyens.map((m) {
+              final isSelected = m.id == selectionEffective;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: GestureDetector(
+                  onTap: () => onSelectMoyenPaiement(m.id),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF5B21B6)
+                            : AppColors.border,
+                        width: isSelected ? 2 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        _LogoMoyenPaiement(
+                          logoUrl: m.logoUrl,
+                          couleur: m.couleur,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            m.libelle,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (isSelected)
+                          const Icon(Icons.check_circle_rounded,
+                              color: Color(0xFF5B21B6), size: 22),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(colors: n.gradient),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.phone_android_rounded,
-                            color: Colors.white, size: 20),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              n.name,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            if (!n.available)
-                              const Text(
-                                'Bientôt disponible',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textHint,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (isSelected)
-                        const Icon(Icons.check_circle_rounded,
-                            color: Color(0xFF5B21B6), size: 22)
-                      else if (!n.available)
-                        const Icon(Icons.lock_outline_rounded,
-                            color: AppColors.textHint, size: 20),
-                    ],
-                  ),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
           const SizedBox(height: 8),
           Container(
             width: double.infinity,
@@ -608,7 +616,7 @@ class _MainAccountStep extends StatelessWidget {
               ],
             ),
           ),
-          if (MoyensPaiement.aucunConfigure) ...[
+          if (!chargement && !enErreur && moyens.isEmpty) ...[
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(14),
@@ -670,6 +678,65 @@ class _MainAccountStep extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Vignette d'un moyen de paiement : logo réel (`logo_url`) s'il est
+/// configuré en base, sinon l'icône téléphone générique — jamais de logo ou
+/// de couleur codés en dur par opérateur.
+class _LogoMoyenPaiement extends StatelessWidget {
+  final String? logoUrl;
+
+  /// Couleur `#RRGGBB` propre au moyen de paiement (`moyen_paiements.couleur`),
+  /// `null` si non configurée en base.
+  final String? couleur;
+
+  const _LogoMoyenPaiement({required this.logoUrl, this.couleur});
+
+  /// Parse `#RRGGBB` en [Color] ; `null` si absent ou mal formé — jamais de
+  /// couleur par opérateur devinée côté mobile.
+  static Color? _versCouleur(String? hex) {
+    if (hex == null) return null;
+    final nettoye = hex.trim().replaceFirst('#', '');
+    if (nettoye.length != 6) return null;
+    final valeur = int.tryParse(nettoye, radix: 16);
+    return valeur == null ? null : Color(0xFF000000 | valeur);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = logoUrl;
+    final teinte = _versCouleur(couleur) ?? AppColors.primaryBlue;
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: teinte.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: url == null || url.isEmpty
+          ? Icon(Icons.phone_android_rounded, color: teinte, size: 20)
+          : Image.network(
+              url,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                // Le logo reste chargeable indépendamment (vérifié via curl) :
+                // si l'affichage échoue quand même, la cause est ici et pas
+                // côté API — utile pour diagnostiquer un souci réseau/CORS
+                // propre au client plutôt que de deviner à l'aveugle.
+                if (AppConfig.enableHttpLogs) {
+                  developer.log(
+                    'Échec du chargement du logo "$url" : $error',
+                    name: 'ApiClient',
+                    level: 900,
+                  );
+                }
+                return Icon(Icons.phone_android_rounded,
+                    color: teinte, size: 20);
+              },
+            ),
     );
   }
 }

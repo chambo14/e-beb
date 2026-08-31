@@ -7,7 +7,9 @@ import '../../../core/network/api_exception.dart';
 import '../../../domain/entities/recapitulatif.dart';
 import '../../../domain/entities/type_cotisation.dart';
 import '../../../presentation/providers/cotisation_providers.dart';
+import '../../../presentation/providers/session_provider.dart';
 import '../../../presentation/providers/utilisateur_providers.dart';
+import '../screens/recapitulatif_par_type_screen.dart';
 
 class CotisationsTab extends ConsumerWidget {
   const CotisationsTab({super.key});
@@ -17,6 +19,7 @@ class CotisationsTab extends ConsumerWidget {
     final fmt = NumberFormat('#,##0', 'fr_FR');
     final cotisations = ref.watch(cotisationsControllerProvider);
     final recap = ref.watch(recapitulatifProvider);
+    final compteActif = ref.watch(utilisateurCourantProvider)?.estActif ?? true;
 
     // Le dossier est « à jour » quand le versé couvre la cible du mois.
     final aJour = recap.valueOrNull?.let(
@@ -86,22 +89,62 @@ class CotisationsTab extends ConsumerWidget {
                 ),
                 const SizedBox(height: 24),
                 if (recap.valueOrNull != null)
-                  _buildRecapMensuel(recap.value!, fmt),
+                  _buildRecapMensuel(context, ref, recap.value!, fmt),
                 const SizedBox(height: 24),
+                if (!compteActif) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.orange.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: AppColors.orange.withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline_rounded,
+                            color: AppColors.orange, size: 16),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'L\'ajout de nouvelles cotisations sera possible '
+                            'une fois votre compte activé.',
+                            style: TextStyle(
+                                fontSize: 11.5, color: AppColors.textSecondary),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 OutlinedButton.icon(
-                  onPressed: () => _ouvrirFormulaireCotisation(context, ref),
-                  icon: const Icon(Icons.add_rounded,
-                      color: AppColors.primaryBlue, size: 18),
-                  label: const Text(
+                  onPressed: compteActif
+                      ? () => _ouvrirFormulaireCotisation(context, ref)
+                      : null,
+                  icon: Icon(
+                    compteActif ? Icons.add_rounded : Icons.lock_outline_rounded,
+                    color: compteActif
+                        ? AppColors.primaryBlue
+                        : AppColors.textHint,
+                    size: 18,
+                  ),
+                  label: Text(
                     'Ajouter une cotisation',
                     style: TextStyle(
-                        color: AppColors.primaryBlue,
+                        color: compteActif
+                            ? AppColors.primaryBlue
+                            : AppColors.textHint,
                         fontWeight: FontWeight.w600),
                   ),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 52),
-                    side: const BorderSide(
-                        color: AppColors.primaryBlue, width: 1.5),
+                    side: BorderSide(
+                        color: compteActif
+                            ? AppColors.primaryBlue
+                            : AppColors.border,
+                        width: 1.5),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
@@ -272,7 +315,12 @@ class CotisationsTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildRecapMensuel(Recapitulatif recap, NumberFormat fmt) {
+  Widget _buildRecapMensuel(
+    BuildContext context,
+    WidgetRef ref,
+    Recapitulatif recap,
+    NumberFormat fmt,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -289,44 +337,76 @@ class CotisationsTab extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Récapitulatif du mois',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-              color: AppColors.textPrimary,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Récapitulatif du mois',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const RecapitulatifParTypeScreen(),
+                  ),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.calendar_month_rounded,
+                          color: AppColors.primaryBlue, size: 15),
+                      SizedBox(width: 5),
+                      Text(
+                        'Par type',
+                        style: TextStyle(
+                          color: AppColors.primaryBlue,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
-          ...recap.lignes.map(
+          ...recap.ventilationCotisations.map(
             (ligne) => _RecapRow(
               label: ligne.libelle,
-              value: '${fmt.format(ligne.montantVerse)} FCFA',
+              value: '${fmt.format(ligne.montant)} FCFA',
               isHighlight: false,
             ),
           ),
-          if (recap.lignes.isNotEmpty)
+          if (recap.ventilationCotisations.isNotEmpty)
             const Divider(height: 24, color: AppColors.border),
           _RecapRow(
             label: 'Objectif du mois',
-            value: '${fmt.format(recap.totalCibleMensuel)} FCFA',
+            value: '${fmt.format(recap.totalObjectifMensuel)} FCFA',
             isHighlight: false,
           ),
           _RecapRow(
             label: 'Déjà versé',
-            value: '${fmt.format(recap.totalVerseMensuel)} FCFA',
+            value: '${fmt.format(recap.totalCotisations)} FCFA',
             isHighlight: true,
           ),
           _RecapRow(
-            label: 'Reste à verser',
-            value: '${fmt.format(recap.resteMensuel)} FCFA',
+            label: 'Reste à cotiser',
+            value: '${fmt.format(recap.resteACotiser)} FCFA',
             isHighlight: false,
           ),
           const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: recap.progressionMensuelle,
+              value: recap.progressionCotisations,
               minHeight: 8,
               backgroundColor: AppColors.border,
               valueColor:
@@ -779,14 +859,36 @@ class _FormulaireCotisation extends ConsumerStatefulWidget {
       _FormulaireCotisationState();
 }
 
+/// Marqueur choisi dans le sélecteur de type quand aucune proposition ne
+/// correspond et que l'utilisateur veut créer un type entièrement nouveau.
+const String _nouveauTypeSentinel = '__nouveau_type__';
+
+/// Marqueur choisi dans le sélecteur de catégorie pour en saisir une libre,
+/// quand aucune des catégories déjà utilisées ne correspond.
+const String _autreCategorieSentinel = '__autre_categorie__';
+
+/// Catégorie appliquée par défaut par le back-end quand l'utilisateur crée un
+/// type entièrement nouveau sans en préciser — reprise ici comme valeur par
+/// défaut du sélecteur pour rester cohérent avec ce comportement.
+const String _categoriePersonnaliseeParDefaut = 'COTISATION PERSONNALISE';
+
 class _FormulaireCotisationState extends ConsumerState<_FormulaireCotisation> {
   late final TextEditingController _libelle;
   late final TextEditingController _code;
   late final TextEditingController _description;
   late final TextEditingController _montant;
+  late final TextEditingController _categorieLibre;
   String? _erreur;
 
+  /// `null` : rien choisi. Une [SuggestionTypeCotisation] : proposition
+  /// reprise telle quelle. [_nouveauTypeSentinel] : création d'un type
+  /// entièrement nouveau. Sans objet en modification (le type est déjà fixé).
+  Object? _choix;
+  String _categorieChoisie = _categoriePersonnaliseeParDefaut;
+
   bool get _estModification => widget.existant != null;
+  bool get _suggestionChoisie => _choix is SuggestionTypeCotisation;
+  bool get _nouveauTypeChoisi => _choix == _nouveauTypeSentinel;
 
   @override
   void initState() {
@@ -798,6 +900,7 @@ class _FormulaireCotisationState extends ConsumerState<_FormulaireCotisation> {
     _montant = TextEditingController(
       text: t?.montantPaiementMensuel?.round().toString() ?? '',
     );
+    _categorieLibre = TextEditingController();
   }
 
   @override
@@ -806,6 +909,7 @@ class _FormulaireCotisationState extends ConsumerState<_FormulaireCotisation> {
     _code.dispose();
     _description.dispose();
     _montant.dispose();
+    _categorieLibre.dispose();
     super.dispose();
   }
 
@@ -816,6 +920,12 @@ class _FormulaireCotisationState extends ConsumerState<_FormulaireCotisation> {
       .replaceAll(RegExp(r'^_+|_+$'), '');
 
   Future<void> _enregistrer() async {
+    if (!_estModification && _choix == null) {
+      setState(() => _erreur =
+          'Sélectionnez une proposition ou créez un nouveau type.');
+      return;
+    }
+
     final libelle = _libelle.text.trim();
     final montant = double.tryParse(_montant.text.replaceAll(' ', '')) ?? 0;
 
@@ -827,6 +937,13 @@ class _FormulaireCotisationState extends ConsumerState<_FormulaireCotisation> {
       setState(() => _erreur = 'Indiquez le montant mensuel de la cotisation.');
       return;
     }
+    if (!_estModification &&
+        _nouveauTypeChoisi &&
+        _categorieChoisie == _autreCategorieSentinel &&
+        _categorieLibre.text.trim().isEmpty) {
+      setState(() => _erreur = 'Précisez la catégorie.');
+      return;
+    }
 
     setState(() => _erreur = null);
 
@@ -835,6 +952,17 @@ class _FormulaireCotisationState extends ConsumerState<_FormulaireCotisation> {
         : _code.text.trim().toUpperCase();
     final description =
         _description.text.trim().isEmpty ? null : _description.text.trim();
+
+    // La catégorie suit toujours le choix de type : reprise telle quelle
+    // d'une proposition existante (jamais modifiée), ou celle sélectionnée
+    // pour un type entièrement nouveau.
+    final categorie = _estModification
+        ? null
+        : _suggestionChoisie
+            ? (_choix as SuggestionTypeCotisation).categorie
+            : _categorieChoisie == _autreCategorieSentinel
+                ? _categorieLibre.text.trim()
+                : _categorieChoisie;
 
     final controller = ref.read(cotisationsControllerProvider.notifier);
     final succes = _estModification
@@ -850,6 +978,7 @@ class _FormulaireCotisationState extends ConsumerState<_FormulaireCotisation> {
             code: code,
             montantPaiementMensuel: montant,
             description: description,
+            categorie: categorie,
           );
 
     if (!mounted) return;
@@ -871,9 +1000,40 @@ class _FormulaireCotisationState extends ConsumerState<_FormulaireCotisation> {
             : 'Cotisation ajoutée.');
   }
 
+  void _choisir(Object? valeur) {
+    setState(() {
+      _choix = valeur;
+      _erreur = null;
+      if (valeur is SuggestionTypeCotisation) {
+        _libelle.text = valeur.libelle;
+        _code.text = valeur.code;
+      } else if (valeur == _nouveauTypeSentinel) {
+        _libelle.clear();
+        _code.clear();
+        _categorieChoisie = _categoriePersonnaliseeParDefaut;
+      }
+    });
+  }
+
+  /// Catégories réellement utilisées par les propositions, dédupliquées et
+  /// complétées de la valeur par défaut — jamais de liste figée en dur.
+  List<String> _categoriesDisponibles(List<SuggestionTypeCotisation> suggestions) {
+    final categories = <String>{_categoriePersonnaliseeParDefaut};
+    for (final s in suggestions) {
+      final c = s.categorie?.trim().toUpperCase();
+      if (c != null && c.isNotEmpty) categories.add(c);
+    }
+    final liste = categories.toList()..sort();
+    return liste;
+  }
+
   @override
   Widget build(BuildContext context) {
     final enCours = ref.watch(cotisationsControllerProvider).isLoading;
+    final suggestions = _estModification
+        ? const <SuggestionTypeCotisation>[]
+        : ref.watch(suggestionsTypesCotisationProvider).valueOrNull ??
+            const <SuggestionTypeCotisation>[];
 
     return Padding(
       padding: EdgeInsets.only(
@@ -908,43 +1068,120 @@ class _FormulaireCotisationState extends ConsumerState<_FormulaireCotisation> {
                   color: AppColors.textPrimary),
             ),
             const SizedBox(height: 20),
-            TextField(
-              controller: _libelle,
-              decoration: const InputDecoration(
-                labelText: 'Nom',
-                hintText: 'Ex : Axa assurance',
+            if (_estModification) ...[
+              TextField(
+                controller: _libelle,
+                decoration: const InputDecoration(
+                  labelText: 'Nom',
+                  hintText: 'Ex : Axa assurance',
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _code,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: 'Code (optionnel)',
-                hintText: 'Ex : AXA',
+              const SizedBox(height: 14),
+              TextField(
+                controller: _code,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Code (optionnel)',
+                  hintText: 'Ex : AXA',
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _description,
-              decoration: const InputDecoration(
-                labelText: 'Description (optionnel)',
-                hintText: 'Ex : Assurance privée',
+            ] else ...[
+              DropdownButtonFormField<Object>(
+                initialValue: _choix,
+                decoration: const InputDecoration(
+                  labelText: 'Type de cotisation',
+                ),
+                hint: const Text('Sélectionner ou créer un type'),
+                isExpanded: true,
+                items: [
+                  for (final s in suggestions)
+                    DropdownMenuItem<Object>(
+                      value: s,
+                      child: Text(
+                        '${s.libelle} (${s.code})',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  const DropdownMenuItem<Object>(
+                    value: _nouveauTypeSentinel,
+                    child: Text('+ Créer un nouveau type'),
+                  ),
+                ],
+                onChanged: _choisir,
               ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _montant,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onChanged: (_) {
-                if (_erreur != null) setState(() => _erreur = null);
-              },
-              decoration: const InputDecoration(
-                labelText: 'Cotisation mensuelle (FCFA)',
-                hintText: '11500',
+              const SizedBox(height: 14),
+            ],
+            if (_suggestionChoisie) ...[
+              _CarteTypeSuggere(suggestion: _choix as SuggestionTypeCotisation),
+              const SizedBox(height: 14),
+            ],
+            if (_estModification || _nouveauTypeChoisi || _suggestionChoisie) ...[
+              if (_nouveauTypeChoisi) ...[
+                TextField(
+                  controller: _libelle,
+                  decoration: const InputDecoration(
+                    labelText: 'Libellé',
+                    hintText: 'Ex : Axa assurance',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _code,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Code (optionnel)',
+                    hintText: 'Ex : AXA',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: _categorieChoisie,
+                  decoration: const InputDecoration(labelText: 'Catégorie'),
+                  isExpanded: true,
+                  items: [
+                    for (final c in _categoriesDisponibles(suggestions))
+                      DropdownMenuItem(value: c, child: Text(c)),
+                    const DropdownMenuItem(
+                      value: _autreCategorieSentinel,
+                      child: Text('Autre…'),
+                    ),
+                  ],
+                  onChanged: (v) => setState(
+                      () => _categorieChoisie = v ?? _categoriePersonnaliseeParDefaut),
+                ),
+                if (_categorieChoisie == _autreCategorieSentinel) ...[
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _categorieLibre,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      labelText: 'Précisez la catégorie',
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+              ],
+              TextField(
+                controller: _description,
+                decoration: const InputDecoration(
+                  labelText: 'Description (optionnel)',
+                  hintText: 'Ex : Assurance privée',
+                ),
               ),
-            ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _montant,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: (_) {
+                  if (_erreur != null) setState(() => _erreur = null);
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Cotisation mensuelle (FCFA)',
+                  hintText: '11500',
+                ),
+              ),
+            ],
             if (_erreur != null) ...[
               const SizedBox(height: 12),
               Text(
@@ -969,6 +1206,53 @@ class _FormulaireCotisationState extends ConsumerState<_FormulaireCotisation> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Informations communes d'une proposition reprise telle quelle — non
+/// modifiables : seules la description et le montant sont propres à
+/// l'utilisateur courant.
+class _CarteTypeSuggere extends StatelessWidget {
+  final SuggestionTypeCotisation suggestion;
+
+  const _CarteTypeSuggere({required this.suggestion});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.lock_outline_rounded,
+                  size: 15, color: AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Text(
+                suggestion.libelle,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Code : ${suggestion.code}'
+            '${suggestion.categorie != null && suggestion.categorie!.isNotEmpty ? ' · ${suggestion.categorie}' : ''}',
+            style: const TextStyle(
+                fontSize: 12.5, color: AppColors.textSecondary),
+          ),
+        ],
       ),
     );
   }
