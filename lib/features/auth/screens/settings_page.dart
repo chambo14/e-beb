@@ -4,6 +4,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../presentation/providers/auth_controller.dart';
 import '../../../presentation/providers/notification_providers.dart';
 import '../../../presentation/providers/session_provider.dart';
+import '../../home/screens/comptes_mobile_money_screen.dart';
+import '../../home/screens/page_contenu_screen.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import 'profil_edit_sheet.dart';
 
@@ -77,6 +79,17 @@ class SettingsPage extends ConsumerWidget {
                           builder: (_) => const ProfilEditSheet(),
                         )
                     : () => _profilVerrouille(context),
+              ),
+              _buildDivider(),
+              _buildSettingItem(
+                icon: Icons.account_balance_wallet_outlined,
+                title: 'Comptes',
+                subtitle: 'Comptes mobile money associés',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ComptesMobileMoneyScreen(),
+                  ),
+                ),
               ),
               _buildDivider(),
               _buildSettingItem(
@@ -159,9 +172,17 @@ class SettingsPage extends ConsumerWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _buildFooterLink('Conditions Générales'),
+                        _buildFooterLink(
+                          context,
+                          'Conditions Générales',
+                          type: 'CGU',
+                        ),
                         Text(' • ', style: TextStyle(color: Colors.grey.shade400)),
-                        _buildFooterLink('Avis de Confidentialité'),
+                        _buildFooterLink(
+                          context,
+                          'Avis de Confidentialité',
+                          type: 'POLITIQUE_CONFIDENTIALITE',
+                        ),
                       ],
                     ),
                   ],
@@ -277,11 +298,13 @@ class SettingsPage extends ConsumerWidget {
   }
 
   // Lien cliquable pour le pied de page
-  Widget _buildFooterLink(String text) {
+  Widget _buildFooterLink(BuildContext context, String text, {required String type}) {
     return GestureDetector(
-      onTap: () {
-        // Redirection vers la vue web ou document légal associé
-      },
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PageContenuScreen(type: type, titreEcran: text),
+        ),
+      ),
       child: Text(
         text,
         style: TextStyle(

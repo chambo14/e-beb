@@ -15,6 +15,7 @@ import '../../../presentation/providers/session_provider.dart';
 import '../../../presentation/providers/transaction_providers.dart';
 import '../../../presentation/providers/utilisateur_providers.dart';
 import '../../auth/screens/settings_page.dart';
+import '../../notifications/screens/notifications_screen.dart';
 import '../screens/recapitulatif_general_screen.dart';
 import '../screens/toutes_transactions_screen.dart';
 
@@ -270,43 +271,49 @@ class _UserHeader extends ConsumerWidget {
         Row(
           children: [
             // Cloche notification
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+            InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
               ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  const Icon(
-                    Icons.notifications_none_rounded,
-                    color: AppColors.textSecondary,
-                    size: 20,
-                  ),
-                  // Pastille des notifications non lues.
-                  if (ref.watch(nombreNotificationsNonLuesProvider) > 0)
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        width: 9,
-                        height: 9,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.red,
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(
+                      Icons.notifications_none_rounded,
+                      color: AppColors.textSecondary,
+                      size: 20,
+                    ),
+                    // Pastille des notifications non lues.
+                    if (ref.watch(nombreNotificationsNonLuesProvider) > 0)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 9,
+                          height: 9,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.red,
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(width: 10), // Espace entre les deux icônes

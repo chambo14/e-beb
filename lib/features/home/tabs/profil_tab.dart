@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/utils/formatters.dart';
 import '../../../domain/entities/utilisateur.dart';
 import '../../../presentation/providers/auth_controller.dart';
 import '../../../presentation/providers/session_provider.dart';
 import '../../auth/screens/settings_page.dart';
+import '../../notifications/screens/notifications_screen.dart';
 
 class ProfilTab extends ConsumerWidget {
   const ProfilTab({super.key});
@@ -206,7 +206,7 @@ class ProfilTab extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Matricule Ebeb Finance',
+                  'Matricule Ebeb',
                   style: TextStyle(
                       color: Colors.white70, fontSize: 11),
                 ),
@@ -223,15 +223,6 @@ class ProfilTab extends ConsumerWidget {
               ],
             ),
           ),
-          if (user.montantRevenu != null)
-            Text(
-              Formatters.montant(user.montantRevenu!),
-              style: const TextStyle(
-                color: Colors.white60,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
         ],
       ),
     );
@@ -314,7 +305,7 @@ class ProfilTab extends ConsumerWidget {
             icon: Icons.notifications_outlined,
             label: 'Notifications',
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsPage()),
+              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
             ),
           ),
           const Divider(height: 1, indent: 56, color: AppColors.border),

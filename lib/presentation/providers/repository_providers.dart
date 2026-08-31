@@ -6,6 +6,7 @@ import '../../data/datasources/cotisation_remote_datasource.dart';
 import '../../data/datasources/epargne_remote_datasource.dart';
 import '../../data/datasources/mobile_money_remote_datasource.dart';
 import '../../data/datasources/notification_remote_datasource.dart';
+import '../../data/datasources/page_remote_datasource.dart';
 import '../../data/datasources/plateforme_remote_datasource.dart';
 import '../../data/datasources/transaction_remote_datasource.dart';
 import '../../data/datasources/utilisateur_remote_datasource.dart';
@@ -14,6 +15,7 @@ import '../../data/repositories/cotisation_repository_impl.dart';
 import '../../data/repositories/epargne_repository_impl.dart';
 import '../../data/repositories/mobile_money_repository_impl.dart';
 import '../../data/repositories/notification_repository_impl.dart';
+import '../../data/repositories/page_repository_impl.dart';
 import '../../data/repositories/plateforme_repository_impl.dart';
 import '../../data/repositories/transaction_repository_impl.dart';
 import '../../data/repositories/utilisateur_repository_impl.dart';
@@ -22,6 +24,7 @@ import '../../domain/repositories/cotisation_repository.dart';
 import '../../domain/repositories/epargne_repository.dart';
 import '../../domain/repositories/mobile_money_repository.dart';
 import '../../domain/repositories/notification_repository.dart';
+import '../../domain/repositories/page_repository.dart';
 import '../../domain/repositories/plateforme_repository.dart';
 import '../../domain/repositories/transaction_repository.dart';
 import '../../domain/repositories/utilisateur_repository.dart';
@@ -75,5 +78,11 @@ final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
 final plateformeRepositoryProvider = Provider<PlateformeRepository>((ref) {
   return PlateformeRepositoryImpl(
     PlateformeRemoteDataSource(ref.watch(apiClientProvider)),
+  );
+});
+
+final pageRepositoryProvider = Provider<PageRepository>((ref) {
+  return PageRepositoryImpl(
+    PageRemoteDataSource(ref.watch(apiClientProvider)),
   );
 });

@@ -64,6 +64,9 @@ class ApiEndpoints {
       '/espace-utilisateur/notifications/marquer-toutes-lues';
   static String notificationLue(String id) => '$notifications/$id/lue';
 
+  // ---------------------------------------------------------------- Pages CMS
+  static String page(String type) => '/espace-utilisateur/pages/$type';
+
   // ---------------------------------------------------------------- Public
   static const String infosPlateforme =
       '/administration/public/infos-plateforme';

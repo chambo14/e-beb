@@ -99,20 +99,89 @@ class NotificationsScreen extends ConsumerWidget {
                 )
               : ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: liste.length,
-                  separatorBuilder: (_, __) => const Divider(
-                    height: 1,
-                    indent: 68,
-                    color: AppColors.border,
-                  ),
-                  itemBuilder: (_, i) => _NotificationTile(
-                    notification: liste[i],
-                    onTap: () => ref
-                        .read(notificationsProvider.notifier)
-                        .marquerLue(liste[i].id),
-                  ),
+                  padding: const EdgeInsets.only(top: 4, bottom: 8),
+                  itemCount: liste.length + 1,
+                  separatorBuilder: (_, i) => i == 0
+                      ? const SizedBox.shrink()
+                      : const Divider(
+                          height: 1,
+                          indent: 68,
+                          color: AppColors.border,
+                        ),
+                  itemBuilder: (_, i) {
+                    if (i == 0) return _EnTeteNonLues(nombre: nonLues);
+                    final notif = liste[i - 1];
+                    return _NotificationTile(
+                      notification: notif,
+                      onTap: () => _ouvrirDetail(context, ref, notif),
+                    );
+                  },
                 ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _ouvrirDetail(
+    BuildContext context,
+    WidgetRef ref,
+    NotificationApp notification,
+  ) async {
+    if (!notification.estLue) {
+      await ref.read(notificationsProvider.notifier).marquerLue(notification.id);
+    }
+    if (!context.mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _DetailNotificationSheet(notification: notification),
+    );
+  }
+}
+
+/// Compteur de notifications non lues, toujours visible en tête de liste.
+class _EnTeteNonLues extends StatelessWidget {
+  final int nombre;
+  const _EnTeteNonLues({required this.nombre});
+
+  @override
+  Widget build(BuildContext context) {
+    final aDesNonLues = nombre > 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: aDesNonLues
+              ? AppColors.primaryBlue.withValues(alpha: 0.08)
+              : AppColors.success.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              aDesNonLues
+                  ? Icons.mark_email_unread_rounded
+                  : Icons.mark_email_read_rounded,
+              size: 18,
+              color: aDesNonLues ? AppColors.primaryBlue : AppColors.success,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              aDesNonLues
+                  ? '$nombre notification${nombre > 1 ? 's' : ''} non lue${nombre > 1 ? 's' : ''}'
+                  : 'Toutes les notifications sont lues',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: aDesNonLues ? AppColors.primaryBlue : AppColors.success,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -130,7 +199,7 @@ class _NotificationTile extends StatelessWidget {
     final lue = notification.estLue;
 
     return InkWell(
-      onTap: lue ? null : onTap,
+      onTap: onTap,
       child: Container(
         color: lue ? null : AppColors.primaryBlue.withValues(alpha: 0.04),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -197,6 +266,115 @@ class _NotificationTile extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Contenu complet d'une notification : titre, message intégral et date/
+/// heure précise de réception.
+class _DetailNotificationSheet extends StatelessWidget {
+  final NotificationApp notification;
+
+  const _DetailNotificationSheet({required this.notification});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primaryBlue.withValues(alpha: 0.10),
+                ),
+                child: const Icon(
+                  Icons.notifications_rounded,
+                  color: AppColors.primaryBlue,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  notification.titre,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              const Icon(Icons.schedule_rounded,
+                  size: 15, color: AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Text(
+                'Reçue le ${Formatters.dateHeure(notification.date)}',
+                style: const TextStyle(
+                    fontSize: 12.5, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+          if (notification.type != null && notification.type!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.border.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                notification.type!,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary),
+              ),
+            ),
+          ],
+          if (notification.message.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Divider(height: 1, color: AppColors.border),
+            const SizedBox(height: 18),
+            Text(
+              notification.message,
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.textPrimary,
+                height: 1.6,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+        ],
       ),
     );
   }

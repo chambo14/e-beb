@@ -32,9 +32,12 @@ class NotificationApp {
       ], 'Notification'),
       message: Json.texteOu(contenu, ['message', 'corps', 'body', 'contenu']),
       type: Json.texte(contenu, ['type', 'categorie']),
+      // Clés réelles renvoyées par `NotificationResource` : `est_lu` (jamais
+      // `est_lue`) et `lu_le` (jamais `lue_le`) — sans cette correspondance
+      // exacte, toute notification restait indéfiniment marquée non lue.
       estLue:
-          Json.booleen(json, ['est_lue', 'lue', 'is_read']) ||
-          Json.premier(json, ['read_at', 'lue_le']) != null,
+          Json.booleen(json, ['est_lu', 'est_lue', 'lue', 'is_read']) ||
+          Json.premier(json, ['lu_le', 'read_at', 'lue_le']) != null,
       date:
           Json.date(json, ['created_at', 'date', 'envoye_le']) ??
           DateTime.now(),
