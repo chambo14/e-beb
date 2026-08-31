@@ -8,32 +8,15 @@ import '../../../core/utils/formatters.dart';
 import '../../../domain/entities/objectif_epargne.dart';
 import '../../../domain/entities/type_cotisation.dart';
 import '../../../presentation/providers/epargne_providers.dart';
+import '../screens/epargne_suivi_screen.dart';
 
+/// Épargne de l'utilisateur — modélisée côté back-end comme un unique
+/// objectif actif à la fois (`GET /objectif-epargne` ne renvoie jamais
+/// qu'un seul objectif, ou aucun). Écran vide + bouton de configuration si
+/// aucun n'existe encore ; récapitulatif (objectif / versé / reste /
+/// progression), dans le même esprit que « Mes cotisations », sinon.
 class EpargneTab extends ConsumerWidget {
   const EpargneTab({super.key});
-
-  /// Palette tournante : l'API ne fournit pas de couleur par objectif.
-  static const _couleurs = [
-    AppColors.primaryBlue,
-    Color(0xFF2E9E5B),
-    AppColors.orange,
-    AppColors.purple,
-  ];
-
-  /// Pictogramme déduit du libellé de l'objectif.
-  static String _emoji(String libelle) {
-    final l = libelle.toLowerCase();
-    if (l.contains('logement') || l.contains('maison') || l.contains('terrain')) {
-      return '🏠';
-    }
-    if (l.contains('scolar') || l.contains('école') || l.contains('étude')) {
-      return '🎓';
-    }
-    if (l.contains('santé') || l.contains('maladie')) return '🏥';
-    if (l.contains('sécurité') || l.contains('urgence')) return '🛡️';
-    if (l.contains('voyage')) return '✈️';
-    return '💼';
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,129 +37,288 @@ class EpargneTab extends ConsumerWidget {
           ),
         ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline_rounded,
-                color: AppColors.primaryBlue, size: 26),
-            onPressed: () => _ouvrirFormulaire(context, ref),
-          ),
-        ],
       ),
       body: objectifs.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (erreur, _) => _buildErreur(context, ref, erreur),
-        data: (liste) => RefreshIndicator(
-          onRefresh: () =>
-              ref.read(objectifsEpargneProvider.notifier).recharger(),
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildTotalCard(fmt, ref.watch(totalEpargneProvider)),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Mes objectifs',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      liste.length > 1
-                          ? '${liste.length} objectifs'
-                          : '${liste.length} objectif',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                if (liste.isEmpty)
-                  _buildVide()
-                else
-                  ...liste.asMap().entries.map(
-                        (e) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _GoalCard(
-                            objectif: e.value,
-                            couleur: _couleurs[e.key % _couleurs.length],
-                            emoji: _emoji(e.value.libelle),
-                            fmt: fmt,
-                            onModifier: () => _ouvrirFormulaire(
-                              context,
-                              ref,
-                              existant: e.value,
-                            ),
-                            onSupprimer: () =>
-                                _confirmerSuppression(context, ref, e.value),
-                          ),
-                        ),
-                      ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () => _ouvrirFormulaire(context, ref),
-                  icon: const Icon(Icons.add_rounded,
-                      color: AppColors.primaryBlue, size: 18),
-                  label: const Text(
-                    'Ajouter un objectif',
-                    style: TextStyle(
-                        color: AppColors.primaryBlue,
-                        fontWeight: FontWeight.w600),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 50),
-                    side: const BorderSide(
-                        color: AppColors.primaryBlue, width: 1.5),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ],
+        data: (liste) {
+          final objectif = liste.isEmpty ? null : liste.first;
+          return RefreshIndicator(
+            onRefresh: () =>
+                ref.read(objectifsEpargneProvider.notifier).recharger(),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              child: objectif == null
+                  ? _buildVide(context, ref)
+                  : _buildRecap(context, ref, objectif, fmt),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildVide() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
-      child: const Column(
+  Widget _buildVide(BuildContext context, WidgetRef ref) {
+    return Column(
+      children: [
+        const SizedBox(height: 40),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+          child: Column(
+            children: [
+              const Icon(Icons.savings_outlined,
+                  color: AppColors.textHint, size: 34),
+              const SizedBox(height: 12),
+              const Text(
+                'Aucune épargne configurée',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Configurez votre épargne : une part de chaque paiement reçu '
+                'y sera automatiquement versée.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12.5,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () => _ouvrirFormulaire(context, ref),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Configurer mon épargne'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecap(
+    BuildContext context,
+    WidgetRef ref,
+    ObjectifEpargne objectif,
+    NumberFormat fmt,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF2E9E5B), Color(0xFF1A7540)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF2E9E5B).withValues(alpha: 0.35),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(22),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      objectif.libelle,
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      fmt.format(objectif.montantEpargne),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Text(
+                      'FCFA épargnés',
+                      style: TextStyle(color: Colors.white60, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                onSelected: (action) => action == 'modifier'
+                    ? _ouvrirFormulaire(context, ref, existant: objectif)
+                    : _confirmerSuppression(context, ref, objectif),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'modifier', child: Text('Modifier')),
+                  PopupMenuItem(value: 'supprimer', child: Text('Supprimer')),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Récapitulatif',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const EpargneSuiviScreen()),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bar_chart_rounded,
+                        color: AppColors.primaryBlue, size: 16),
+                    SizedBox(width: 5),
+                    Text(
+                      'Suivi',
+                      style: TextStyle(
+                        color: AppColors.primaryBlue,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primaryBlue.withValues(alpha: 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ligne('Objectif', '${fmt.format(objectif.montantCible)} FCFA'),
+              _ligne('Total épargné', '${fmt.format(objectif.montantEpargne)} FCFA',
+                  accent: true),
+              _ligne('Total restant', '${fmt.format(objectif.reste)} FCFA'),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: objectif.progression,
+                  minHeight: 8,
+                  backgroundColor: AppColors.border,
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                      Color(0xFF2E9E5B)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        objectif.estActif
+                            ? Icons.autorenew_rounded
+                            : Icons.pause_circle_outline_rounded,
+                        size: 13,
+                        color: objectif.estActif
+                            ? AppColors.success
+                            : AppColors.textHint,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        objectif.typeCalcul == TypeCalcul.pourcentage
+                            ? '${objectif.valeur.round()} % par paiement'
+                            : '${fmt.format(objectif.valeur)} FCFA par paiement',
+                        style: const TextStyle(
+                            color: AppColors.textHint, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                  if (objectif.estAtteint)
+                    const Text(
+                      'Objectif atteint !',
+                      style: TextStyle(
+                          color: AppColors.success,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700),
+                    )
+                  else
+                    Text(
+                      '${(objectif.progression * 100).round()}%',
+                      style: const TextStyle(
+                          color: Color(0xFF2E9E5B),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _ligne(String label, String valeur, {bool accent = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Icon(Icons.savings_outlined, color: AppColors.textHint, size: 34),
-          SizedBox(height: 12),
           Text(
-            'Aucun objectif d\'épargne',
+            label,
             style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-              fontSize: 14,
+              fontSize: 13,
+              color: accent ? AppColors.textPrimary : AppColors.textSecondary,
+              fontWeight: accent ? FontWeight.w700 : FontWeight.w400,
             ),
           ),
-          SizedBox(height: 6),
           Text(
-            'Créez un objectif : une part de chaque paiement reçu y sera '
-            'automatiquement versée.',
-            textAlign: TextAlign.center,
+            valeur,
             style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12.5,
-              height: 1.5,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: accent ? const Color(0xFF2E9E5B) : AppColors.textPrimary,
             ),
           ),
         ],
@@ -187,7 +329,7 @@ class EpargneTab extends ConsumerWidget {
   Widget _buildErreur(BuildContext context, WidgetRef ref, Object erreur) {
     final message = erreur is ApiException
         ? erreur.message
-        : 'Impossible de charger vos objectifs d\'épargne.';
+        : 'Impossible de charger votre épargne.';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -214,65 +356,6 @@ class EpargneTab extends ConsumerWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildTotalCard(NumberFormat fmt, double total) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF2E9E5B), Color(0xFF1A7540)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF2E9E5B).withValues(alpha: 0.35),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(22),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Total épargné',
-                  style: TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  fmt.format(total),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const Text(
-                  'FCFA',
-                  style: TextStyle(color: Colors.white60, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.15),
-            ),
-            child: const Icon(Icons.savings_rounded,
-                color: Colors.white, size: 30),
-          ),
-        ],
       ),
     );
   }
@@ -695,173 +778,6 @@ class _FormulaireObjectifState extends ConsumerState<_FormulaireObjectif> {
           decoration: InputDecoration(hintText: hint),
         ),
       ],
-    );
-  }
-}
-
-// ─── Carte d'un objectif ──────────────────────────────────────────────────────
-
-class _GoalCard extends StatelessWidget {
-  final ObjectifEpargne objectif;
-  final Color couleur;
-  final String emoji;
-  final NumberFormat fmt;
-  final VoidCallback onModifier;
-  final VoidCallback onSupprimer;
-
-  const _GoalCard({
-    required this.objectif,
-    required this.couleur,
-    required this.emoji,
-    required this.fmt,
-    required this.onModifier,
-    required this.onSupprimer,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryBlue.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: couleur.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                    child: Text(emoji, style: const TextStyle(fontSize: 22))),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      objectif.libelle,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: AppColors.textPrimary),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Objectif : ${fmt.format(objectif.montantCible)} FCFA',
-                      style: const TextStyle(
-                          color: AppColors.textSecondary, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    fmt.format(objectif.montantEpargne),
-                    style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                        color: couleur),
-                  ),
-                  Text(
-                    '${(objectif.progression * 100).round()}%',
-                    style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12),
-                  ),
-                ],
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert_rounded,
-                    color: AppColors.textSecondary, size: 20),
-                onSelected: (action) =>
-                    action == 'modifier' ? onModifier() : onSupprimer(),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'modifier', child: Text('Modifier')),
-                  PopupMenuItem(value: 'supprimer', child: Text('Supprimer')),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: objectif.progression,
-              minHeight: 8,
-              backgroundColor: AppColors.border,
-              valueColor: AlwaysStoppedAnimation<Color>(couleur),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              // Règle de versement configurée pour cet objectif.
-              Expanded(
-                child: Row(
-                  children: [
-                    Icon(
-                      objectif.estActif
-                          ? Icons.autorenew_rounded
-                          : Icons.pause_circle_outline_rounded,
-                      size: 13,
-                      color: objectif.estActif
-                          ? AppColors.success
-                          : AppColors.textHint,
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        objectif.typeCalcul == TypeCalcul.pourcentage
-                            ? '${objectif.valeur.round()} % par paiement'
-                            : '${fmt.format(objectif.valeur)} FCFA par paiement',
-                        style: const TextStyle(
-                            color: AppColors.textHint, fontSize: 11),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (objectif.estAtteint)
-                const Row(
-                  children: [
-                    Icon(Icons.check_circle_rounded,
-                        color: AppColors.success, size: 14),
-                    SizedBox(width: 4),
-                    Text(
-                      'Objectif atteint !',
-                      style: TextStyle(
-                          color: AppColors.success,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                )
-              else
-                Text(
-                  'Reste ${fmt.format(objectif.reste)} FCFA',
-                  style: const TextStyle(
-                      color: AppColors.textHint, fontSize: 11),
-                ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

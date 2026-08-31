@@ -86,8 +86,10 @@ class _RecapitulatifParTypeScreenState
   }
 
   /// CNPS et AMU visent un montant issu de réglages actuels (déclaration de
-  /// revenu, valeur par défaut du type) plutôt que d'un instantané par mois
-  /// — même règle que `RecapitulatifService::calculerObjectifMensuel`.
+  /// revenu, `montant_paiement_mensuel` du type — source de vérité du suivi
+  /// de conformité, jamais `default_valeur` qui ne sert qu'à pré-remplir une
+  /// règle de prélèvement) plutôt que d'un instantané par mois — même règle
+  /// que `RecapitulatifService::calculerObjectifMensuel`.
   List<_LigneComparaison> _construireLignes(
     List<TypeCotisation> types,
     double? montantCotisationMensuelle,
@@ -108,7 +110,7 @@ class _RecapitulatifParTypeScreenState
     if (amu.isNotEmpty) {
       lignes.add(_LigneComparaison(
         libelle: 'CMU',
-        objectif: amu.first.valeurParDefaut ?? 0,
+        objectif: amu.first.montantPaiementMensuel ?? 0,
         verse: recap.montantCotisationParType('COTISATION_AMU'),
       ));
     }
@@ -119,7 +121,7 @@ class _RecapitulatifParTypeScreenState
           .fold<double>(0, (total, l) => total + l.montant);
       lignes.add(_LigneComparaison(
         libelle: type.libelle,
-        objectif: type.valeurParDefaut ?? 0,
+        objectif: type.montantPaiementMensuel ?? 0,
         verse: verse,
       ));
     }

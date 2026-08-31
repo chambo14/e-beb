@@ -11,10 +11,15 @@ class EpargneRepositoryImpl implements EpargneRepository {
 
   @override
   Future<List<ObjectifEpargne>> objectifs() async {
-    final reponse = await _remote.objectifs();
-    return reponse.liste
-        .map(ObjectifEpargne.depuisJson)
-        .toList(growable: false);
+    // Le back-end ne modélise qu'un seul objectif actif par utilisateur —
+    // `GET /objectif-epargne` renvoie directement cet objet (ou `null`), pas
+    // une liste. `reponse.liste` ne sait déballer un objet unique en liste
+    // que via une clé wrapper à valeur `List`, absente ici (l'objet a de
+    // nombreuses clés à plat) : elle renverrait toujours `[]`, y compris
+    // quand un objectif existe réellement.
+    final donnees = (await _remote.objectifs()).donnees;
+    if (donnees.isEmpty) return const [];
+    return [ObjectifEpargne.depuisJson(donnees)];
   }
 
   @override

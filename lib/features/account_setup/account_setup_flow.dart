@@ -42,6 +42,9 @@ class _AccountSetupFlowState extends ConsumerState<AccountSetupFlow> {
   bool _assuranceActive = false;
   bool _epargneActive = true;
   double _epargneTaux = 10;
+  final _epargneLibelle = TextEditingController(text: 'Mon épargne');
+  final _epargneMontantCible = TextEditingController();
+  String? _epargneErreur;
   bool _enregistrement = false;
 
   // CNPS / CMU : valeur et activation éditées localement (par id de type),
@@ -73,6 +76,8 @@ class _AccountSetupFlowState extends ConsumerState<AccountSetupFlow> {
   @override
   void dispose() {
     _pageController.dispose();
+    _epargneLibelle.dispose();
+    _epargneMontantCible.dispose();
     super.dispose();
   }
 
@@ -127,22 +132,36 @@ class _AccountSetupFlowState extends ConsumerState<AccountSetupFlow> {
   }
 
   /// Applique les taux choisis aux types de cotisation correspondants (CNPS,
-  /// CMU, épargne), crée les cotisations personnalisées d'assurance
-  /// complémentaire ajoutées par l'utilisateur, puis entre dans l'application.
+  /// CMU), crée l'objectif d'épargne actif si l'utilisateur a laissé
+  /// l'épargne automatique activée, crée les cotisations personnalisées
+  /// d'assurance complémentaire ajoutées par l'utilisateur, puis entre dans
+  /// l'application.
   Future<void> _terminer() async {
-    setState(() => _enregistrement = true);
+    if (_epargneActive &&
+        (double.tryParse(_epargneMontantCible.text.replaceAll(' ', '')) ??
+                0) <=
+            0) {
+      setState(() => _epargneErreur =
+          'Indiquez le montant cible de votre épargne, ou désactivez-la.');
+      return;
+    }
+    setState(() {
+      _epargneErreur = null;
+      _enregistrement = true;
+    });
 
     final types = ref.read(cotisationsControllerProvider).valueOrNull ?? const [];
     final controller = ref.read(cotisationsControllerProvider.notifier);
     final cnps = _trouver(types, ['CNPS']);
     final cmu = _trouver(types, ['CMU', 'AMU']);
 
-    // On ne configure que les types réellement exposés par l'API.
+    // On ne configure que les types réellement exposés par l'API. L'épargne
+    // n'est pas une cotisation : elle est prélevée par le moteur de paiement
+    // via un `ObjectifEpargne` dédié (voir plus bas), pas via une règle de
+    // prélèvement sur un type de cotisation.
     final aConfigurer = <(TypeCotisation, TypeCalcul, double, bool)>[
       for (final type in types)
-        if (_correspond(type, ['EPARGNE', 'ÉPARGNE']))
-          (type, TypeCalcul.pourcentage, _epargneTaux, _epargneActive)
-        else if (cnps != null && type.id == cnps.id)
+        if (cnps != null && type.id == cnps.id)
           (type, type.typeCalculEffectif, _valeurPour(cnps), _actifPour(cnps))
         else if (cmu != null && type.id == cmu.id)
           (type, type.typeCalculEffectif, _valeurPour(cmu), _actifPour(cmu)),
@@ -165,6 +184,36 @@ class _AccountSetupFlowState extends ConsumerState<AccountSetupFlow> {
               : 'Échec de la configuration de ${type.libelle}.',
           succes: false,
         );
+        return;
+      }
+    }
+
+    if (_epargneActive) {
+      try {
+        final maintenant = DateTime.now();
+        await ref.read(epargneRepositoryProvider).ajouter(
+              libelle: _epargneLibelle.text.trim().isEmpty
+                  ? 'Mon épargne'
+                  : _epargneLibelle.text.trim(),
+              montantCible: double.parse(
+                _epargneMontantCible.text.replaceAll(' ', ''),
+              ),
+              // Non collectée à l'inscription (l'épargne y est optionnelle et
+              // sans échéance imposée) — ajustable ensuite depuis « Mon
+              // épargne ».
+              dateLimite: DateTime(
+                maintenant.year + 1,
+                maintenant.month,
+                maintenant.day,
+              ),
+              typeCalcul: TypeCalcul.pourcentage,
+              valeur: _epargneTaux,
+              estActif: true,
+            );
+      } on ApiException catch (e) {
+        if (!mounted) return;
+        setState(() => _enregistrement = false);
+        _snack('Épargne : ${e.message}', succes: false);
         return;
       }
     }
@@ -285,6 +334,9 @@ class _AccountSetupFlowState extends ConsumerState<AccountSetupFlow> {
                         assuranceActive: _assuranceActive,
                         epargneActive: _epargneActive,
                         epargneTaux: _epargneTaux,
+                        epargneLibelle: _epargneLibelle,
+                        epargneMontantCible: _epargneMontantCible,
+                        epargneErreur: _epargneErreur,
                         enCours: _enregistrement,
                         cnps: cnps,
                         cmu: cmu,
@@ -747,6 +799,9 @@ class _PrelevementStep extends StatelessWidget {
   final bool assuranceActive;
   final bool epargneActive;
   final double epargneTaux;
+  final TextEditingController epargneLibelle;
+  final TextEditingController epargneMontantCible;
+  final String? epargneErreur;
   final ValueChanged<bool> onAssuranceChanged;
   final ValueChanged<bool> onEpargneChanged;
   final ValueChanged<double> onEpargneTauxChanged;
@@ -779,6 +834,9 @@ class _PrelevementStep extends StatelessWidget {
     required this.assuranceActive,
     required this.epargneActive,
     required this.epargneTaux,
+    required this.epargneLibelle,
+    required this.epargneMontantCible,
+    this.epargneErreur,
     required this.enCours,
     required this.onAssuranceChanged,
     required this.onEpargneChanged,
@@ -920,11 +978,14 @@ class _PrelevementStep extends StatelessWidget {
             description: 'Mise de côté à chaque paiement reçu',
             active: epargneActive,
             taux: epargneTaux,
-            min: 1,
-            max: 30,
-            step: 1,
             onActiveChanged: onEpargneChanged,
-            onTauxChanged: onEpargneTauxChanged,
+            child: _EpargneObjectifChamps(
+              taux: epargneTaux,
+              onTauxChanged: onEpargneTauxChanged,
+              libelle: epargneLibelle,
+              montantCible: epargneMontantCible,
+              erreur: epargneErreur,
+            ),
           ),
           const SizedBox(height: 10),
           _ToggleRuleRow(
@@ -1098,6 +1159,97 @@ class _ErreurCotisationsBanner extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Champs propres à l'objectif d'épargne créé à l'inscription (libellé,
+/// montant cible, taux prélevé) — remplace le simple stepper de taux affiché
+/// par défaut pour les autres lignes, car une épargne active exige un
+/// `ObjectifEpargne` réel (`libellé` + `montant_cible` obligatoires côté API).
+class _EpargneObjectifChamps extends StatelessWidget {
+  final double taux;
+  final ValueChanged<double> onTauxChanged;
+  final TextEditingController libelle;
+  final TextEditingController montantCible;
+  final String? erreur;
+
+  const _EpargneObjectifChamps({
+    required this.taux,
+    required this.onTauxChanged,
+    required this.libelle,
+    required this.montantCible,
+    this.erreur,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Prélevé à chaque paiement',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const Spacer(),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.remove_circle_outline_rounded,
+                  size: 20, color: Color(0xFF5B21B6)),
+              onPressed:
+                  taux > 1 ? () => onTauxChanged(taux - 1) : null,
+            ),
+            Text(
+              '${taux.round()}%',
+              style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.add_circle_outline_rounded,
+                  size: 20, color: Color(0xFF5B21B6)),
+              onPressed:
+                  taux < 30 ? () => onTauxChanged(taux + 1) : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: libelle,
+          style: const TextStyle(fontSize: 13),
+          decoration: const InputDecoration(
+            labelText: 'Nom de l\'objectif',
+            hintText: 'Ex : Épargne logement',
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: montantCible,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          style: const TextStyle(fontSize: 13),
+          decoration: const InputDecoration(
+            labelText: 'Montant cible (FCFA)',
+            hintText: '500000',
+            isDense: true,
+          ),
+        ),
+        if (erreur != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            erreur!,
+            style: const TextStyle(
+                color: AppColors.error,
+                fontSize: 12,
+                fontWeight: FontWeight.w500),
+          ),
+        ],
+      ],
     );
   }
 }
