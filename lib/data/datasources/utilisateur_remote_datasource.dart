@@ -36,4 +36,11 @@ class UtilisateurRemoteDataSource {
     'nouveau_code_pin': nouveauCodePin,
     'nouveau_code_pin_confirmation': nouveauCodePin,
   }, methodeSpoofee: 'patch');
+
+  /// Déverrouillage de l'application (session déjà valide) : vérifie
+  /// uniquement le code PIN, sans jamais redemander d'OTP.
+  Future<ApiEnvelope> verifierCodePin(String codePin) => _client.postForm(
+    ApiEndpoints.verifierCodePin,
+    {'code_pin': codePin},
+  );
 }

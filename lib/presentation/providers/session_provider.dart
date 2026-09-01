@@ -19,10 +19,18 @@ class EtatSession {
   final Utilisateur? utilisateur;
   final String? telephone;
 
+  /// Application verrouillée par mise en arrière-plan alors que la session
+  /// (jeton Sanctum) est toujours valide : l'écran de verrouillage ne
+  /// demande que le code PIN, jamais d'OTP. N'affecte pas [estAuthentifie]
+  /// ni la déconnexion forcée sur 401 (statut [StatutSession.nonAuthentifie]
+  /// distinct) : les deux mécanismes restent indépendants.
+  final bool verrouille;
+
   const EtatSession({
     this.statut = StatutSession.initial,
     this.utilisateur,
     this.telephone,
+    this.verrouille = false,
   });
 
   bool get estAuthentifie => statut == StatutSession.authentifie;
@@ -32,10 +40,12 @@ class EtatSession {
     StatutSession? statut,
     Utilisateur? utilisateur,
     String? telephone,
+    bool? verrouille,
   }) => EtatSession(
     statut: statut ?? this.statut,
     utilisateur: utilisateur ?? this.utilisateur,
     telephone: telephone ?? this.telephone,
+    verrouille: verrouille ?? this.verrouille,
   );
 }
 
@@ -69,6 +79,11 @@ class SessionController extends Notifier<EtatSession> {
         statut: StatutSession.authentifie,
         utilisateur: utilisateur,
         telephone: telephone ?? utilisateur.telephone,
+        // Jeton encore valide au démarrage à froid (l'application avait été
+        // totalement fermée, pas seulement mise en arrière-plan) : on
+        // verrouille quand même, le code PIN reste la seule porte d'entrée
+        // tant que la session n'a pas expiré.
+        verrouille: true,
       );
     } on ApiException catch (e) {
       // Jeton révoqué ou expiré : on repart proprement sur l'écran de connexion.
@@ -118,6 +133,19 @@ class SessionController extends Notifier<EtatSession> {
         telephone: telephone,
       );
     }
+  }
+
+  /// Verrouille l'application (mise en arrière-plan). Sans effet si la
+  /// session n'est pas authentifiée : on ne verrouille jamais l'écran de
+  /// connexion lui-même.
+  void verrouiller() {
+    if (!state.estAuthentifie) return;
+    state = state.copyWith(verrouille: true);
+  }
+
+  /// Déverrouille l'application après vérification réussie du code PIN.
+  void deverrouiller() {
+    state = state.copyWith(verrouille: false);
   }
 
   void _surNonAuthentifie() {

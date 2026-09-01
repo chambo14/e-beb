@@ -1,3 +1,4 @@
+import '../../core/network/api_exception.dart';
 import '../../core/utils/formatters.dart';
 import '../../domain/entities/demande_inscription.dart';
 import '../../domain/entities/recapitulatif.dart';
@@ -54,5 +55,16 @@ class UtilisateurRepositoryImpl implements UtilisateurRepository {
       nouveauCodePin: nouveauCodePin,
     );
     return reponse.message ?? 'Code PIN modifié.';
+  }
+
+  @override
+  Future<bool> verifierCodePin(String codePin) async {
+    try {
+      await _remote.verifierCodePin(codePin);
+      return true;
+    } on ApiException catch (e) {
+      if (e.statusCode == 400) return false;
+      rethrow;
+    }
   }
 }

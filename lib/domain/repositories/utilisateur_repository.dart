@@ -19,4 +19,9 @@ abstract class UtilisateurRepository {
     required String ancienCodePin,
     required String nouveauCodePin,
   });
+
+  /// Déverrouillage de l'application (session déjà valide) : `true` si le
+  /// code PIN est correct, `false` s'il est incorrect. Toute autre erreur
+  /// (réseau, serveur…) est propagée telle quelle.
+  Future<bool> verifierCodePin(String codePin);
 }

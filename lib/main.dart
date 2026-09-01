@@ -4,7 +4,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'core/constants/app_colors.dart';
+import 'features/auth/screens/lock_screen.dart';
 import 'features/auth/screens/splash_screen.dart';
+import 'presentation/providers/session_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,8 +22,35 @@ void main() async {
   runApp(const ProviderScope(child: EbebApp()));
 }
 
-class EbebApp extends StatelessWidget {
+class EbebApp extends ConsumerStatefulWidget {
   const EbebApp({super.key});
+
+  @override
+  ConsumerState<EbebApp> createState() => _EbebAppState();
+}
+
+class _EbebAppState extends ConsumerState<EbebApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Mise en arrière-plan alors que la session est toujours valide : on
+    // verrouille l'application (code PIN requis, jamais d'OTP). Sans effet
+    // si la session n'est pas authentifiée (voir SessionController.verrouiller).
+    if (state == AppLifecycleState.paused) {
+      ref.read(sessionProvider.notifier).verrouiller();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +128,18 @@ class EbebApp extends StatelessWidget {
         ),
       ),
       home: const SplashScreen(),
+      builder: (context, child) {
+        final session = ref.watch(sessionProvider);
+        return Stack(
+          children: [
+            if (child != null) child,
+            // Superposition plutôt que navigation : évite de perturber la
+            // pile de routes en cours (Navigator) lors du verrouillage.
+            if (session.estAuthentifie && session.verrouille)
+              const Positioned.fill(child: LockScreen()),
+          ],
+        );
+      },
     );
   }
 }
