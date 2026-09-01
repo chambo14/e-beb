@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/constants/app_colors.dart';
 import '../auth/screens/landing_screen.dart';
 
@@ -143,8 +144,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                 position: _imageSlide,
                                 child: Padding(
                                   padding: const EdgeInsets.all(20),
-                                  child: Image.asset(
-                                    'assets/presentation.jpeg',
+                                  child: SvgPicture.asset(
+                                    'assets/epargne_automatique.svg',
                                     fit: BoxFit.contain,
                                   ),
                                 ),
