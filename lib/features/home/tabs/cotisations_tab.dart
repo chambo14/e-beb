@@ -21,11 +21,9 @@ class CotisationsTab extends ConsumerWidget {
     final recap = ref.watch(recapitulatifProvider);
     final compteActif = ref.watch(utilisateurCourantProvider)?.estActif ?? true;
 
-    // Le dossier est « à jour » quand le versé couvre la cible du mois.
-    final aJour = recap.valueOrNull?.let(
-          (r) => r.totalCibleMensuel <= 0 || r.resteMensuel <= 0,
-        ) ??
-        true;
+    // Le dossier est « à jour » quand le versé couvre l'objectif du mois
+    // (`total_objectif_mensuel` / `total_cotisations` réels de l'API).
+    final aJour = recap.valueOrNull?.estAJour ?? true;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -254,7 +252,12 @@ class CotisationsTab extends ConsumerWidget {
     Recapitulatif? recap,
     NumberFormat fmt,
   ) {
-    final reste = recap?.resteMensuel ?? 0;
+    final reste = recap?.resteACotiser ?? 0;
+    final progression = recap?.progressionCotisations ?? 0;
+    // Aucun versement du tout ce mois-ci (mais un objectif existe) : message
+    // distinct d'un simple retard partiel — situation réelle plus précise
+    // que le seul booléen à jour/pas à jour.
+    final rienVerse = !aJour && progression <= 0;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       width: double.infinity,
@@ -292,7 +295,9 @@ class CotisationsTab extends ConsumerWidget {
                 Text(
                   aJour
                       ? 'Vos cotisations sont à jour'
-                      : 'Cotisations incomplètes',
+                      : rienVerse
+                          ? 'Aucune cotisation versée ce mois-ci'
+                          : 'Cotisations incomplètes',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -303,7 +308,9 @@ class CotisationsTab extends ConsumerWidget {
                 Text(
                   aJour
                       ? 'Vos prélèvements automatiques couvrent votre objectif du mois.'
-                      : 'Il reste ${fmt.format(reste)} FCFA à verser ce mois-ci.',
+                      : rienVerse
+                          ? 'Aucun versement enregistré. Il reste ${fmt.format(reste)} FCFA à verser ce mois-ci.'
+                          : '${(progression * 100).round()} % de votre objectif versé — il reste ${fmt.format(reste)} FCFA ce mois-ci.',
                   style: const TextStyle(
                       color: Colors.white70, fontSize: 12, height: 1.4),
                 ),
@@ -1385,10 +1392,4 @@ class _RecapRow extends StatelessWidget {
       ),
     );
   }
-}
-
-extension _Let<T> on T {
-  /// Applique [transform] à une valeur non nulle — évite les variables
-  /// intermédiaires dans les expressions conditionnelles.
-  R let<R>(R Function(T) transform) => transform(this);
 }

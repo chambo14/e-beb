@@ -1,45 +1,5 @@
 import '../../core/utils/json_utils.dart';
 
-/// Une ligne du récapitulatif : un type de cotisation et son avancement.
-class LigneRecapitulatif {
-  final String libelle;
-  final String? code;
-  final double montantCible;
-  final double montantVerse;
-
-  const LigneRecapitulatif({
-    required this.libelle,
-    this.code,
-    this.montantCible = 0,
-    this.montantVerse = 0,
-  });
-
-  double get progression =>
-      montantCible <= 0 ? 0 : (montantVerse / montantCible).clamp(0.0, 1.0);
-
-  double get reste =>
-      (montantCible - montantVerse).clamp(0, double.infinity).toDouble();
-
-  factory LigneRecapitulatif.depuisJson(Map<String, dynamic> json) {
-    return LigneRecapitulatif(
-      libelle: Json.texteOu(json, ['libelle', 'nom', 'label', 'type'], '—'),
-      code: Json.texte(json, ['code']),
-      montantCible: Json.decimalOu(json, [
-        'montant_cible',
-        'montant_attendu',
-        'montant_du',
-        'montant',
-      ]),
-      montantVerse: Json.decimalOu(json, [
-        'montant_verse',
-        'montant_paye',
-        'montant_cotise',
-        'total_verse',
-      ]),
-    );
-  }
-}
-
 /// Montant versé pour un type de cotisation précis, sur la période couverte
 /// par un `Recapitulatif` — lu depuis la ventilation réelle `cotisations` de
 /// l'API (`RecapitulatifService::ventilerCotisations`).
@@ -49,7 +9,7 @@ class LigneCotisationVersee {
   /// `null` pour les types globaux non rattachés (ex. CNPS, identifié par
   /// son seul `type_operation`) ; toujours renseigné pour une cotisation
   /// personnalisée, qui partage `COTISATION_PERSONNALISEE` avec toutes les
-  /// autres — seul cet identifiant permet de les distinguer entre elles.
+  /// autres — seul cet identifiant les distingue entre elles.
   final String? typeCotisationId;
   final String libelle;
   final String? categorie;
@@ -76,15 +36,9 @@ class LigneCotisationVersee {
 
 /// Récapitulatif des cotisations (`/espace-utilisateur/recapitulatif`).
 class Recapitulatif {
-  final double totalCibleMensuel;
-  final double totalVerseMensuel;
-  final double totalCibleAnnuel;
-  final double totalVerseAnnuel;
-  final List<LigneRecapitulatif> lignes;
-
-  /// Objectif total (CNPS déclaré + `default_valeur` de chaque autre type
-  /// actif — AMU et cotisations personnalisées) — indépendant de la période
-  /// affichée, voir `RecapitulatifService::calculerObjectifMensuel`.
+  /// Objectif total (CNPS déclaré + `montant_paiement_mensuel` de chaque
+  /// autre type actif — AMU et cotisations personnalisées) — indépendant de
+  /// la période affichée, voir `RecapitulatifService::calculerObjectifMensuel`.
   final double totalObjectifMensuel;
 
   // ── Champs réellement renvoyés par `RecapitulatifService::recapitulatif`
@@ -110,11 +64,6 @@ class Recapitulatif {
   final Map<String, dynamic> brut;
 
   const Recapitulatif({
-    this.totalCibleMensuel = 0,
-    this.totalVerseMensuel = 0,
-    this.totalCibleAnnuel = 0,
-    this.totalVerseAnnuel = 0,
-    this.lignes = const [],
     this.totalObjectifMensuel = 0,
     this.totalRecu = 0,
     this.totalCotisations = 0,
@@ -129,18 +78,8 @@ class Recapitulatif {
 
   static const vide = Recapitulatif();
 
-  double get progressionMensuelle => totalCibleMensuel <= 0
-      ? 0
-      : (totalVerseMensuel / totalCibleMensuel).clamp(0.0, 1.0);
-
-  double get progressionAnnuelle => totalCibleAnnuel <= 0
-      ? 0
-      : (totalVerseAnnuel / totalCibleAnnuel).clamp(0.0, 1.0);
-
   /// Montant versé pour un type d'opération donné (ex. `COTISATION_CNPS`),
-  /// lu directement dans la ventilation `cotisations` du payload d'origine —
-  /// c'est la seule donnée fiable pour ce niveau de détail, `lignes` (ci-
-  /// dessus) reposant sur un ancien contrat qui ne correspond plus à l'API.
+  /// lu directement dans la ventilation `cotisations` du payload d'origine.
   double montantCotisationParType(String typeOperation) {
     for (final c in Json.objets(brut, ['cotisations'])) {
       if (Json.texte(c, ['type_operation']) == typeOperation) {
@@ -172,37 +111,12 @@ class Recapitulatif {
       ? 0
       : (totalCotisations / totalObjectifMensuel).clamp(0.0, 1.0);
 
-  double get resteMensuel =>
-      (totalCibleMensuel - totalVerseMensuel).clamp(0, double.infinity).toDouble();
-
-  double get resteAnnuel =>
-      (totalCibleAnnuel - totalVerseAnnuel).clamp(0, double.infinity).toDouble();
+  /// `true` si l'utilisateur n'a aucun objectif de cotisation configuré (donc
+  /// rien à devoir), ou si tout ce qui est dû ce mois-ci a déjà été versé.
+  bool get estAJour => totalObjectifMensuel <= 0 || resteACotiser <= 0;
 
   factory Recapitulatif.depuisJson(Map<String, dynamic> json) {
-    final lignes = [
-      ...Json.objets(json, ['cotisations', 'lignes', 'details', 'items']),
-    ].map(LigneRecapitulatif.depuisJson).toList(growable: false);
-
     return Recapitulatif(
-      totalCibleMensuel: Json.decimalOu(json, [
-        'total_cible_mensuel',
-        'montant_mensuel_cible',
-        'cotisation_mensuelle_cible',
-      ]),
-      totalVerseMensuel: Json.decimalOu(json, [
-        'total_verse_mensuel',
-        'montant_mensuel_verse',
-        'cotisation_mensuelle_versee',
-      ]),
-      totalCibleAnnuel: Json.decimalOu(json, [
-        'total_cible_annuel',
-        'montant_annuel_cible',
-      ]),
-      totalVerseAnnuel: Json.decimalOu(json, [
-        'total_verse_annuel',
-        'montant_annuel_verse',
-      ]),
-      lignes: lignes,
       totalObjectifMensuel: Json.decimalOu(json, ['total_objectif_mensuel']),
       totalRecu: Json.decimalOu(json, ['total_recu']),
       totalCotisations: Json.decimalOu(json, ['total_cotisations']),
