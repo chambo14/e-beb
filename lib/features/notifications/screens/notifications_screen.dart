@@ -22,8 +22,10 @@ class NotificationsScreen extends ConsumerWidget {
         backgroundColor: AppColors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppColors.textPrimary),
+          icon: const Icon(
+            Icons.arrow_back_rounded,
+            color: AppColors.textPrimary,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -51,8 +53,11 @@ class NotificationsScreen extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.cloud_off_rounded,
-                    color: AppColors.error, size: 34),
+                const Icon(
+                  Icons.cloud_off_rounded,
+                  color: AppColors.error,
+                  size: 34,
+                ),
                 const SizedBox(height: 12),
                 Text(
                   erreur is ApiException
@@ -60,16 +65,18 @@ class NotificationsScreen extends ConsumerWidget {
                       : 'Impossible de charger vos notifications.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                      height: 1.5),
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton(
                   onPressed: () =>
                       ref.read(notificationsProvider.notifier).recharger(),
-                  style:
-                      ElevatedButton.styleFrom(minimumSize: const Size(160, 44)),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(160, 44),
+                  ),
                   child: const Text('Réessayer'),
                 ),
               ],
@@ -83,8 +90,11 @@ class NotificationsScreen extends ConsumerWidget {
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: const [
                     SizedBox(height: 120),
-                    Icon(Icons.notifications_none_rounded,
-                        color: AppColors.textHint, size: 40),
+                    Icon(
+                      Icons.notifications_none_rounded,
+                      color: AppColors.textHint,
+                      size: 40,
+                    ),
                     SizedBox(height: 12),
                     Text(
                       'Aucune notification',
@@ -128,7 +138,9 @@ class NotificationsScreen extends ConsumerWidget {
     NotificationApp notification,
   ) async {
     if (!notification.estLue) {
-      await ref.read(notificationsProvider.notifier).marquerLue(notification.id);
+      await ref
+          .read(notificationsProvider.notifier)
+          .marquerLue(notification.id);
     }
     if (!context.mounted) return;
     showModalBottomSheet<void>(
@@ -249,7 +261,9 @@ class _NotificationTile extends StatelessWidget {
                   Text(
                     Formatters.dateHeure(notification.date),
                     style: const TextStyle(
-                        fontSize: 11, color: AppColors.textHint),
+                      fontSize: 11,
+                      color: AppColors.textHint,
+                    ),
                   ),
                 ],
               ),
@@ -330,16 +344,23 @@ class _DetailNotificationSheet extends StatelessWidget {
               ),
             ],
           ),
+
+          // Contenu de la notification
           const SizedBox(height: 14),
           Row(
             children: [
-              const Icon(Icons.schedule_rounded,
-                  size: 15, color: AppColors.textSecondary),
+              const Icon(
+                Icons.schedule_rounded,
+                size: 15,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(width: 6),
               Text(
                 'Reçue le ${Formatters.dateHeure(notification.date)}',
                 style: const TextStyle(
-                    fontSize: 12.5, color: AppColors.textSecondary),
+                  fontSize: 12.5,
+                  color: AppColors.textSecondary,
+                ),
               ),
             ],
           ),
@@ -354,9 +375,10 @@ class _DetailNotificationSheet extends StatelessWidget {
               child: Text(
                 notification.type!,
                 style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
               ),
             ),
           ],

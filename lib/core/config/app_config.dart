@@ -7,8 +7,8 @@ class AppConfig {
 
   static const String baseUrl = String.fromEnvironment(
     'EBEB_API_BASE_URL',
-    defaultValue: 'https://ebebfinance.com/api',
-    // defaultValue: 'http://localhost:8000/api',
+    // defaultValue: 'https://ebebfinance.com/api',
+    defaultValue: 'http://localhost:8000/api',
   );
 
   /// Active les logs détaillés des requêtes HTTP.

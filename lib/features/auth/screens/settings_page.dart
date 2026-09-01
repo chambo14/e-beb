@@ -7,6 +7,7 @@ import '../../../presentation/providers/session_provider.dart';
 import '../../home/screens/comptes_mobile_money_screen.dart';
 import '../../home/screens/page_contenu_screen.dart';
 import '../../notifications/screens/notifications_screen.dart';
+import '../../support/screens/support_screen.dart';
 import 'profil_edit_sheet.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -128,9 +129,9 @@ class SettingsPage extends ConsumerWidget {
                 icon: Icons.help_outline_rounded,
                 title: "Support",
                 subtitle: "Contactez le service d'aide utilisateur",
-                onTap: () {
-                  // Ouverture du canal de support
-                },
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SupportScreen()),
+                ),
               ),
 
               const SizedBox(height: 40),

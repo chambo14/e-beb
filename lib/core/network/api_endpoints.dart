@@ -67,6 +67,9 @@ class ApiEndpoints {
   // ---------------------------------------------------------------- Pages CMS
   static String page(String type) => '/espace-utilisateur/pages/$type';
 
+  // ---------------------------------------------------------------- Support
+  static const String supportSignaler = '/espace-utilisateur/support/signaler';
+
   // ---------------------------------------------------------------- Public
   static const String infosPlateforme =
       '/administration/public/infos-plateforme';
