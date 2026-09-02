@@ -10,6 +10,7 @@ import '../../data/datasources/page_remote_datasource.dart';
 import '../../data/datasources/plateforme_remote_datasource.dart';
 import '../../data/datasources/support_remote_datasource.dart';
 import '../../data/datasources/transaction_remote_datasource.dart';
+import '../../data/datasources/transfert_qr_remote_datasource.dart';
 import '../../data/datasources/utilisateur_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../data/repositories/cotisation_repository_impl.dart';
@@ -20,6 +21,7 @@ import '../../data/repositories/page_repository_impl.dart';
 import '../../data/repositories/plateforme_repository_impl.dart';
 import '../../data/repositories/support_repository_impl.dart';
 import '../../data/repositories/transaction_repository_impl.dart';
+import '../../data/repositories/transfert_qr_repository_impl.dart';
 import '../../data/repositories/utilisateur_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/cotisation_repository.dart';
@@ -30,6 +32,7 @@ import '../../domain/repositories/page_repository.dart';
 import '../../domain/repositories/plateforme_repository.dart';
 import '../../domain/repositories/support_repository.dart';
 import '../../domain/repositories/transaction_repository.dart';
+import '../../domain/repositories/transfert_qr_repository.dart';
 import '../../domain/repositories/utilisateur_repository.dart';
 
 /// Injection de dépendances : les écrans ne connaissent que les contrats du
@@ -93,5 +96,11 @@ final pageRepositoryProvider = Provider<PageRepository>((ref) {
 final supportRepositoryProvider = Provider<SupportRepository>((ref) {
   return SupportRepositoryImpl(
     SupportRemoteDataSource(ref.watch(apiClientProvider)),
+  );
+});
+
+final transfertQrRepositoryProvider = Provider<TransfertQrRepository>((ref) {
+  return TransfertQrRepositoryImpl(
+    TransfertQrRemoteDataSource(ref.watch(apiClientProvider)),
   );
 });

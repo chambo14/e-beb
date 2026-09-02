@@ -16,6 +16,7 @@ import '../../../presentation/providers/transaction_providers.dart';
 import '../../../presentation/providers/utilisateur_providers.dart';
 import '../../auth/screens/settings_page.dart';
 import '../../notifications/screens/notifications_screen.dart';
+import '../../paiements/screens/scanner_qr_screen.dart';
 import '../screens/recapitulatif_general_screen.dart';
 import '../screens/toutes_transactions_screen.dart';
 
@@ -1085,6 +1086,130 @@ class _CarteAucunCompte extends StatelessWidget {
   }
 }
 
+// ─── Choix : afficher son QR code ou en scanner un ────────────────────────────
+
+enum _OptionQr { afficher, scanner }
+
+class _FeuilleOptionsQr extends StatelessWidget {
+  final CompteMobileMoney compte;
+
+  const _FeuilleOptionsQr({required this.compte});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Compte ${compte.operateur}',
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _OptionTile(
+              icone: Icons.qr_code_2_rounded,
+              titre: 'Afficher mon QR code',
+              sousTitre: 'Un autre utilisateur le scanne pour vous payer.',
+              onTap: () => Navigator.of(context).pop(_OptionQr.afficher),
+            ),
+            const SizedBox(height: 12),
+            _OptionTile(
+              icone: Icons.qr_code_scanner_rounded,
+              titre: 'Scanner un QR code',
+              sousTitre: 'Payez un compte ${compte.operateur} compatible.',
+              onTap: () => Navigator.of(context).pop(_OptionQr.scanner),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OptionTile extends StatelessWidget {
+  final IconData icone;
+  final String titre;
+  final String sousTitre;
+  final VoidCallback onTap;
+
+  const _OptionTile({
+    required this.icone,
+    required this.titre,
+    required this.sousTitre,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.inputFill,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.primaryBlue.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icone, color: AppColors.primaryBlue, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    titre,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    sousTitre,
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textHint, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Carte d'un compte ────────────────────────────────────────────────────────
 
 class _NetworkCard extends StatelessWidget {
@@ -1092,7 +1217,7 @@ class _NetworkCard extends StatelessWidget {
 
   const _NetworkCard({required this.compte});
 
-  void _showExpanded(BuildContext context) {
+  void _afficherMonQrCode(BuildContext context) {
     Navigator.push(
       context,
       PageRouteBuilder(
@@ -1112,6 +1237,33 @@ class _NetworkCard extends StatelessWidget {
     );
   }
 
+  void _scannerUnQrCode(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ScannerQrScreen(compteSource: compte)),
+    );
+  }
+
+  /// Sur le modèle Wave : un tap sur la carte propose de recevoir (afficher
+  /// son propre code) ou de payer (scanner celui d'un tiers) — plutôt que de
+  /// n'ouvrir que l'affichage, comme auparavant.
+  Future<void> _ouvrirOptions(BuildContext context) async {
+    final choix = await showModalBottomSheet<_OptionQr>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _FeuilleOptionsQr(compte: compte),
+    );
+    if (choix == null || !context.mounted) return;
+    switch (choix) {
+      case _OptionQr.afficher:
+        _afficherMonQrCode(context);
+      case _OptionQr.scanner:
+        _scannerUnQrCode(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final couleur =
@@ -1119,7 +1271,7 @@ class _NetworkCard extends StatelessWidget {
     final qr = compte.qrPayload;
 
     return GestureDetector(
-      onTap: qr == null ? null : () => _showExpanded(context),
+      onTap: qr == null ? null : () => _ouvrirOptions(context),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),

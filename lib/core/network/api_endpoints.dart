@@ -44,6 +44,12 @@ class ApiEndpoints {
   static String typeCotisationPersonnalise(String id) =>
       '$typesCotisationPersonnalises/$id';
 
+  // ---------------------------------------------------------------- Transferts par QR code
+  static const String identifierDestinataireQr =
+      '/espace-utilisateur/paiements-qr/identifier';
+  static const String envoyerTransfertQr =
+      '/espace-utilisateur/paiements-qr/envoyer';
+
   // ---------------------------------------------------------------- Comptes mobile money
   static const String moyensPaiement = '/espace-utilisateur/moyens-paiement';
   static const String comptesMobileMoney =
