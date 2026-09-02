@@ -67,4 +67,19 @@ class UtilisateurRepositoryImpl implements UtilisateurRepository {
       rethrow;
     }
   }
+
+  @override
+  Future<void> demanderReinitialisationPin() async {
+    await _remote.demanderReinitialisationCodePin();
+  }
+
+  @override
+  Future<void> verifierOtpReinitialisationPin(String codeOtp) async {
+    await _remote.verifierOtpReinitialisationCodePin(codeOtp);
+  }
+
+  @override
+  Future<void> reinitialiserPin(String nouveauPin) async {
+    await _remote.reinitialiserCodePin(nouveauPin);
+  }
 }

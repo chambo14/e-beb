@@ -6,6 +6,7 @@ import '../../../presentation/providers/auth_controller.dart';
 import '../../../presentation/providers/session_provider.dart';
 import '../../auth/screens/settings_page.dart';
 import '../../notifications/screens/notifications_screen.dart';
+import '../../support/screens/support_screen.dart';
 
 class ProfilTab extends ConsumerWidget {
   const ProfilTab({super.key});
@@ -320,7 +321,9 @@ class ProfilTab extends ConsumerWidget {
           _MenuItem(
             icon: Icons.help_outline_rounded,
             label: 'Aide & Support',
-            onTap: () {},
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SupportScreen()),
+            ),
           ),
           const Divider(height: 1, indent: 56, color: AppColors.border),
           _MenuItem(

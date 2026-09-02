@@ -134,9 +134,19 @@ class _EbebAppState extends ConsumerState<EbebApp> with WidgetsBindingObserver {
           children: [
             if (child != null) child,
             // Superposition plutôt que navigation : évite de perturber la
-            // pile de routes en cours (Navigator) lors du verrouillage.
+            // pile de routes en cours (Navigator) lors du verrouillage. Un
+            // Navigator imbriqué dédié est néanmoins nécessaire : `builder`
+            // place ce contenu au-dessus/à côté du Navigator principal (dans
+            // `child`), pas en dessous, donc sans lui `Navigator.of(context)`
+            // et `showDialog(...)` depuis LockScreen (ex. le parcours « code
+            // PIN oublié ») ne trouveraient aucun Navigator ancêtre.
             if (session.estAuthentifie && session.verrouille)
-              const Positioned.fill(child: LockScreen()),
+              Positioned.fill(
+                child: Navigator(
+                  onGenerateRoute: (_) =>
+                      MaterialPageRoute(builder: (_) => const LockScreen()),
+                ),
+              ),
           ],
         );
       },

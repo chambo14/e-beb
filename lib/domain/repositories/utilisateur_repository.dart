@@ -24,4 +24,18 @@ abstract class UtilisateurRepository {
   /// code PIN est correct, `false` s'il est incorrect. Toute autre erreur
   /// (réseau, serveur…) est propagée telle quelle.
   Future<bool> verifierCodePin(String codePin);
+
+  /// Code PIN oublié — étape 1 : envoie un OTP par email. Lève une
+  /// [ApiException] (message affichable tel quel) en cas d'échec, par
+  /// exemple si aucune adresse email n'est renseignée sur le compte.
+  Future<void> demanderReinitialisationPin();
+
+  /// Code PIN oublié — étape 2 : vérifie le code reçu par email. Lève une
+  /// [ApiException] (message affichable tel quel, ex. « Il vous reste N
+  /// tentative(s) ») s'il est incorrect, expiré, ou après trop d'essais.
+  Future<void> verifierOtpReinitialisationPin(String codeOtp);
+
+  /// Code PIN oublié — étape 3 : définit le nouveau code PIN. N'aboutit que
+  /// si l'étape 2 a réussi pour cet utilisateur (contrôlé côté serveur).
+  Future<void> reinitialiserPin(String nouveauPin);
 }

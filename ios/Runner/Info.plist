@@ -49,5 +49,7 @@
 	<string>Ebeb Finance utilise l'appareil photo pour prendre en photo votre pièce d'identité et votre selfie lors de l'inscription.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Ebeb Finance accède à vos photos pour importer votre pièce d'identité et votre selfie lors de l'inscription.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Ebeb Finance utilise Face ID pour déverrouiller rapidement votre espace, sans ressaisir votre code PIN.</string>
 </dict>
 </plist>

@@ -1,22 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:local_auth/local_auth.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../presentation/providers/repository_providers.dart';
 import '../../../presentation/providers/session_provider.dart';
+import 'reinitialiser_pin_screen.dart';
 
 const int _longueurPin = 6;
 
+/// Codes d'erreur `local_auth` signifiant qu'aucune empreinte ne sera jamais
+/// disponible sur cet appareil/cette session (matériel absent, aucune
+/// empreinte enrôlée, ou aucun verrouillage d'appareil configuré) — dans ces
+/// cas, inutile de proposer l'icône ou de retenter automatiquement. Les
+/// autres codes (verrou temporaire, annulation, timeout…) sont transitoires :
+/// l'icône reste affichée pour permettre une nouvelle tentative.
+const _codesBiometrieIndisponible = {
+  LocalAuthExceptionCode.noCredentialsSet,
+  LocalAuthExceptionCode.noBiometricsEnrolled,
+  LocalAuthExceptionCode.noBiometricHardware,
+};
+
 /// Verrouillage de l'application : la session (jeton Sanctum) reste valide,
-/// seul le code PIN est demandé pour reprendre la main — jamais d'OTP.
+/// seul le code PIN (ou l'empreinte digitale, en complément) est demandé
+/// pour reprendre la main — jamais d'OTP.
 ///
 /// Affiché en superposition par [EbebApp] tant que
 /// `session.estAuthentifie && session.verrouille` : voir main.dart.
 ///
-/// Saisie via un clavier numérique dédié plutôt qu'un `TextField` : le code
-/// PIN est un simple [String] accumulé chiffre par chiffre dans l'état local,
-/// chaque case affichée (les points en haut) ne fait que refléter sa
+/// Saisie du PIN via un clavier numérique dédié plutôt qu'un `TextField` : le
+/// code est un simple [String] accumulé chiffre par chiffre dans l'état
+/// local, chaque case affichée (les points en haut) ne fait que refléter sa
 /// longueur — aucun contrôleur partagé ne peut donc « recopier » un chiffre
 /// dans toutes les cases.
 class LockScreen extends ConsumerStatefulWidget {
@@ -27,9 +42,66 @@ class LockScreen extends ConsumerStatefulWidget {
 }
 
 class _LockScreenState extends ConsumerState<LockScreen> {
+  final _localAuth = LocalAuthentication();
+
   String _pin = '';
   String? _erreur;
   bool _enCours = false;
+
+  /// `true` dès qu'un capteur biométrique enrôlé est détecté sur l'appareil.
+  /// Tant que c'est indéterminé (vérification en cours), l'icône reste
+  /// masquée plutôt que de clignoter.
+  bool _biometrieDisponible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initBiometrie();
+  }
+
+  /// Détecte la disponibilité du capteur puis, si présent, déclenche
+  /// automatiquement la demande d'authentification — comme sur les
+  /// applications bancaires, à l'ouverture de l'écran de verrouillage.
+  Future<void> _initBiometrie() async {
+    bool disponible;
+    try {
+      disponible = await _localAuth.isDeviceSupported() &&
+          await _localAuth.canCheckBiometrics &&
+          (await _localAuth.getAvailableBiometrics()).isNotEmpty;
+    } catch (_) {
+      disponible = false;
+    }
+
+    if (!mounted) return;
+    setState(() => _biometrieDisponible = disponible);
+
+    if (disponible) _authentifierParBiometrie();
+  }
+
+  Future<void> _authentifierParBiometrie() async {
+    if (_enCours || !_biometrieDisponible) return;
+
+    try {
+      final reussie = await _localAuth.authenticate(
+        localizedReason:
+            'Authentifiez-vous pour accéder à votre espace Ebeb Finance',
+        biometricOnly: true,
+        persistAcrossBackgrounding: true,
+      );
+
+      if (!mounted || !reussie) return;
+      ref.read(sessionProvider.notifier).deverrouiller();
+    } on LocalAuthException catch (e) {
+      if (!mounted) return;
+      // Empreinte retirée/désactivée entre-temps : on masque l'icône plutôt
+      // que de continuer à proposer une biométrie qui ne fonctionnera plus.
+      if (_codesBiometrieIndisponible.contains(e.code)) {
+        setState(() => _biometrieDisponible = false);
+      }
+      // Annulation par l'utilisateur ou échec de lecture : aucun message
+      // alarmant, il lui reste la saisie du code PIN.
+    }
+  }
 
   void _saisirChiffre(String chiffre) {
     if (_enCours || _pin.length >= _longueurPin) return;
@@ -78,6 +150,11 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     }
   }
 
+  /// Lance le parcours « code PIN oublié » : un OTP envoyé par email prouve
+  /// l'identité (la session/le jeton reste valide tout du long, inutile de
+  /// se déconnecter) avant de définir un nouveau code PIN. La déconnexion
+  /// complète reste disponible séparément via le lien en bas de l'écran,
+  /// pour l'utilisateur qui n'a pas non plus accès à cette adresse email.
   Future<void> _codeOublie() async {
     if (_enCours) return;
     final confirme = await showDialog<bool>(
@@ -85,8 +162,9 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Code PIN oublié ?'),
         content: const Text(
-          'Vous allez être déconnecté et devrez vous authentifier à nouveau '
-          '(code de vérification par SMS) pour définir un nouveau code PIN.',
+          'Nous allons vous envoyer un code de vérification par email pour '
+          'confirmer votre identité, puis vous pourrez définir un nouveau '
+          'code PIN.',
         ),
         actions: [
           TextButton(
@@ -95,13 +173,30 @@ class _LockScreenState extends ConsumerState<LockScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Se déconnecter'),
+            child: const Text('Continuer'),
           ),
         ],
       ),
     );
-    if (confirme == true) {
-      ref.read(sessionProvider.notifier).deconnecter();
+    if (confirme != true || !mounted) return;
+
+    setState(() => _enCours = true);
+    try {
+      await ref
+          .read(utilisateurRepositoryProvider)
+          .demanderReinitialisationPin();
+
+      if (!mounted) return;
+      setState(() => _enCours = false);
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ReinitialiserPinScreen()),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _enCours = false;
+        _erreur = e.message;
+      });
     }
   }
 
@@ -217,10 +312,18 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                           chiffre: '0',
                           onTap: () => _saisirChiffre('0'),
                         ),
-                        _ToucheIcone(
-                          icone: Icons.backspace_outlined,
-                          onTap: _effacer,
-                        ),
+                        // Empreinte tant que rien n'est saisi (relance
+                        // manuelle possible) ; dès la première touche, cette
+                        // place sert à corriger la saisie du PIN.
+                        _pin.isEmpty && _biometrieDisponible
+                            ? _ToucheIcone(
+                                icone: Icons.fingerprint_rounded,
+                                onTap: _authentifierParBiometrie,
+                              )
+                            : _ToucheIcone(
+                                icone: Icons.backspace_outlined,
+                                onTap: _effacer,
+                              ),
                       ],
                     ),
                   ],
@@ -323,9 +426,9 @@ class _ToucheTexte extends StatelessWidget {
   }
 }
 
-/// Touche icône (effacer) — pas de biométrie disponible dans l'application :
-/// ce dernier emplacement sert à corriger une saisie plutôt qu'à imiter une
-/// empreinte digitale inexistante.
+/// Touche icône du dernier emplacement du clavier : empreinte digitale
+/// (relance la biométrie) tant que le PIN est vide, ou effacer dès qu'une
+/// saisie est en cours (voir le `build` de [_LockScreenState]).
 class _ToucheIcone extends StatelessWidget {
   final IconData icone;
   final VoidCallback onTap;

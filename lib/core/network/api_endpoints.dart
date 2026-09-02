@@ -19,6 +19,13 @@ class ApiEndpoints {
   static const String profil = '/espace-utilisateur/profil';
   static const String codePin = '/espace-utilisateur/code-pin';
   static const String verifierCodePin = '/espace-utilisateur/code-pin/verifier';
+  // Code PIN oublié : identité prouvée par OTP (envoyé par email).
+  static const String demanderReinitialisationCodePin =
+      '/espace-utilisateur/code-pin/reinitialiser/demander-otp';
+  static const String verifierOtpReinitialisationCodePin =
+      '/espace-utilisateur/code-pin/reinitialiser/verifier-otp';
+  static const String reinitialiserCodePin =
+      '/espace-utilisateur/code-pin/reinitialiser';
   static const String deconnexion = '/espace-utilisateur/se-deconnecter';
   static const String recapitulatif = '/espace-utilisateur/recapitulatif';
   static const String solde = '/espace-utilisateur/solde';
