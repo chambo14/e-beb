@@ -135,6 +135,16 @@ class _ServiceParam {
   TypeCalcul get typeCalcul =>
       tauxActive ? TypeCalcul.pourcentage : TypeCalcul.fixe;
 
+  /// `true` pour une cotisation personnalisée dont la règle de prélèvement
+  /// n'a pas encore été configurée et validée côté serveur (aucune règle
+  /// enregistrée, ou règle enregistrée mais inactive) — tant que c'est le
+  /// cas, le back-end n'effectue aucun prélèvement pour ce type (voir
+  /// `PaiementService::calculerRepartition`). Les cotisations plateforme
+  /// (CNPS, AMU…) ne sont jamais concernées : elles ont toujours une valeur
+  /// par défaut.
+  bool get reglePasEncoreValidee =>
+      type.estPersonnalise && !(type.estConfigure && type.estActif);
+
   /// `null` si la valeur active respecte la contrainte minimale (ou vaut 0,
   /// donc pas encore configurée), sinon le message à afficher.
   String? get erreurMinimum {
@@ -271,6 +281,12 @@ class _ParametresFinanciersState
     }
     return total;
   }
+
+  // Cotisations personnalisées dont la règle n'est pas encore configurée et
+  // validée : leur prélèvement est ignoré par le back-end tant que ce n'est
+  // pas le cas (voir `_ServiceParam.reglePasEncoreValidee`).
+  List<_ServiceParam> get _servicesNonConfigures =>
+      _services.where((s) => s.reglePasEncoreValidee).toList();
 
   // Total des montants fixes actifs.
   int get _totalMontant {
@@ -517,6 +533,48 @@ class _ParametresFinanciersState
         ),
 
         const SizedBox(height: 16),
+
+        // ─── Avertissement : règles non configurées/validées ───────────────
+        if (_servicesNonConfigures.isNotEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: AppColors.warning.withValues(alpha: 0.25),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info_outline_rounded,
+                    color: AppColors.warning, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _servicesNonConfigures.length == 1
+                        ? 'Une cotisation n\'est pas encore configurée. Son '
+                            'prélèvement sera ignoré jusqu\'à validation de sa '
+                            'règle.'
+                        : 'Certaines cotisations ne sont pas encore '
+                            'configurées. Leurs prélèvements seront ignorés '
+                            'jusqu\'à validation de leurs règles.',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
 
         // ─── Récapitulatif : total des prélèvements ────────────────────────
         Container(
@@ -805,6 +863,25 @@ class _ServiceRowState extends State<_ServiceRow> {
               ),
             ],
           ),
+
+          if (service.reglePasEncoreValidee) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.error_outline_rounded,
+                    color: AppColors.warning.withValues(alpha: 0.9), size: 13),
+                const SizedBox(width: 4),
+                const Text(
+                  'Prélèvement non configuré',
+                  style: TextStyle(
+                    color: AppColors.warning,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
 
           if (erreur != null) ...[
             const SizedBox(height: 4),
