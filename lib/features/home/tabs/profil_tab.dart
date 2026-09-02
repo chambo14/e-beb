@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/models/user_model.dart';
-import '../../auth/screens/phone_input_screen.dart';
+import '../../../domain/entities/utilisateur.dart';
+import '../../../presentation/providers/auth_controller.dart';
+import '../../../presentation/providers/session_provider.dart';
+import '../../auth/screens/settings_page.dart';
+import '../../notifications/screens/notifications_screen.dart';
+import '../../support/screens/support_screen.dart';
 
-class ProfilTab extends StatelessWidget {
-  final UserModel user;
-
-  const ProfilTab({super.key, required this.user});
+class ProfilTab extends ConsumerWidget {
+  const ProfilTab({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final utilisateur = ref.watch(utilisateurCourantProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -28,37 +33,70 @@ class ProfilTab extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.edit_outlined,
                 color: AppColors.primaryBlue, size: 22),
-            onPressed: () {},
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            ),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        child: Column(
-          children: [
-            _buildProfileHeader(),
-            const SizedBox(height: 24),
-            _buildCardInfo(),
-            const SizedBox(height: 20),
-            _buildInfoSection(),
-            const SizedBox(height: 20),
-            _buildMenuSection(context),
-            const SizedBox(height: 24),
-            _buildLogoutButton(context),
-            const SizedBox(height: 8),
-            const Text(
-              'E-BEB SALARY v1.0.0\n© 2026 Agnero\'s Engineering',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textHint, fontSize: 11),
+      body: utilisateur == null
+          ? _buildChargement(ref)
+          : RefreshIndicator(
+              onRefresh: () =>
+                  ref.read(sessionProvider.notifier).rafraichirUtilisateur(),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                child: Column(
+                  children: [
+                    _buildProfileHeader(utilisateur),
+                    const SizedBox(height: 24),
+                    _buildCardInfo(utilisateur),
+                    const SizedBox(height: 20),
+                    _buildInfoSection(utilisateur),
+                    const SizedBox(height: 20),
+                    _buildMenuSection(context),
+                    const SizedBox(height: 24),
+                    _buildLogoutButton(context, ref),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Ebeb Finance v1.0.0\n© 2026 Agnero\'s Engineering',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.textHint, fontSize: 11),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 20),
-          ],
-        ),
+    );
+  }
+
+  /// Le profil n'est pas encore chargé (démarrage, ou rechargement après 401).
+  Widget _buildChargement(WidgetRef ref) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          const Text(
+            'Chargement de votre profil…',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: () =>
+                ref.read(sessionProvider.notifier).rafraichirUtilisateur(),
+            child: const Text('Réessayer'),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildProfileHeader() {
+  Widget _buildProfileHeader(Utilisateur user) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -88,7 +126,7 @@ class ProfilTab extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                user.initials,
+                user.initiales,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 30,
@@ -99,7 +137,7 @@ class ProfilTab extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            user.fullName,
+            user.nomComplet,
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,
@@ -108,37 +146,40 @@ class ProfilTab extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '+225 ${user.telephone}',
+            user.telephone,
             style: const TextStyle(
               color: AppColors.textSecondary,
               fontSize: 14,
             ),
           ),
-          const SizedBox(height: 12),
-          // Badge type de carte
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.primaryBlue, AppColors.purple],
+          if (user.typeCarte != null || user.statut != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.primaryBlue, AppColors.purple],
+                ),
+                borderRadius: BorderRadius.circular(20),
               ),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              'Carte ${user.typeCard}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
+              child: Text(
+                user.typeCarte != null
+                    ? 'Carte ${user.typeCarte}'
+                    : user.statut!,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildCardInfo() {
+  Widget _buildCardInfo(Utilisateur user) {
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -166,13 +207,13 @@ class ProfilTab extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Ma carte E-BEB SALARY',
+                  'Matricule Ebeb',
                   style: TextStyle(
                       color: Colors.white70, fontSize: 11),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  user.cardNumber,
+                  user.matricule ?? 'En cours d\'attribution',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w700,
@@ -183,20 +224,12 @@ class ProfilTab extends StatelessWidget {
               ],
             ),
           ),
-          Text(
-            user.cardExpiry,
-            style: const TextStyle(
-              color: Colors.white60,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoSection() {
+  Widget _buildInfoSection(Utilisateur user) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -214,19 +247,40 @@ class ProfilTab extends StatelessWidget {
           _InfoRow(
             icon: Icons.badge_outlined,
             label: 'N° CNPS',
-            value: user.cnpsNumero,
+            value: user.numeroCnps ?? 'Non renseigné',
+          ),
+          const Divider(height: 1, indent: 56, color: AppColors.border),
+          _InfoRow(
+            icon: Icons.local_hospital_outlined,
+            label: 'N° CMU',
+            value: user.numeroCmu ?? 'Non renseigné',
           ),
           const Divider(height: 1, indent: 56, color: AppColors.border),
           _InfoRow(
             icon: Icons.phone_outlined,
             label: 'Téléphone',
-            value: '+225 ${user.telephone}',
+            value: user.telephone,
           ),
           const Divider(height: 1, indent: 56, color: AppColors.border),
           _InfoRow(
-            icon: Icons.credit_score_outlined,
-            label: 'Type de compte',
-            value: user.typeCard,
+            icon: Icons.mail_outline_rounded,
+            label: 'Email',
+            value: user.email ?? 'Non renseigné',
+          ),
+          const Divider(height: 1, indent: 56, color: AppColors.border),
+          _InfoRow(
+            icon: Icons.work_outline_rounded,
+            label: 'Métier',
+            value: user.metier ?? user.profession ?? 'Non renseigné',
+          ),
+          const Divider(height: 1, indent: 56, color: AppColors.border),
+          _InfoRow(
+            icon: Icons.place_outlined,
+            label: 'Résidence',
+            value: [user.quartier, user.ville]
+                    .where((e) => e != null && e.isNotEmpty)
+                    .join(', ')
+                    .ifEmpty('Non renseignée'),
           ),
         ],
       ),
@@ -251,19 +305,25 @@ class ProfilTab extends StatelessWidget {
           _MenuItem(
             icon: Icons.notifications_outlined,
             label: 'Notifications',
-            onTap: () {},
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+            ),
           ),
           const Divider(height: 1, indent: 56, color: AppColors.border),
           _MenuItem(
             icon: Icons.security_outlined,
             label: 'Sécurité',
-            onTap: () {},
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            ),
           ),
           const Divider(height: 1, indent: 56, color: AppColors.border),
           _MenuItem(
             icon: Icons.help_outline_rounded,
             label: 'Aide & Support',
-            onTap: () {},
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SupportScreen()),
+            ),
           ),
           const Divider(height: 1, indent: 56, color: AppColors.border),
           _MenuItem(
@@ -276,9 +336,9 @@ class ProfilTab extends StatelessWidget {
     );
   }
 
-  Widget _buildLogoutButton(BuildContext context) {
+  Widget _buildLogoutButton(BuildContext context, WidgetRef ref) {
     return TextButton.icon(
-      onPressed: () => _showLogoutDialog(context),
+      onPressed: () => _showLogoutDialog(context, ref),
       icon: const Icon(Icons.logout_rounded, color: AppColors.red, size: 20),
       label: const Text(
         'Se déconnecter',
@@ -291,31 +351,30 @@ class ProfilTab extends StatelessWidget {
     );
   }
 
-  void _showLogoutDialog(BuildContext context) {
+  void _showLogoutDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
           'Déconnexion',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
         content: const Text(
-          'Êtes-vous sûr de vouloir vous déconnecter de votre compte E-BEB SALARY ?',
+          'Êtes-vous sûr de vouloir vous déconnecter de votre compte Ebeb Finance ?',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Annuler',
                 style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
+            // La redirection est pilotée par le `ref.listen` de HomeScreen :
+            // il suffit d'invalider la session.
             onPressed: () {
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(
-                    builder: (_) => const PhoneInputScreen()),
-                (route) => false,
-              );
+              Navigator.pop(dialogContext);
+              ref.read(authControllerProvider.notifier).seDeconnecter();
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.red,
@@ -406,4 +465,9 @@ class _MenuItem extends StatelessWidget {
       ),
     );
   }
+}
+
+extension _TexteParDefaut on String {
+  /// Renvoie [defaut] quand la chaîne assemblée est vide.
+  String ifEmpty(String defaut) => isEmpty ? defaut : this;
 }

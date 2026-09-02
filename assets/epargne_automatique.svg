@@ -1,0 +1,61 @@
+<svg width="480" height="420" viewBox="0 0 480 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="vaultGrad" x1="170" y1="190" x2="360" y2="350" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8B55C8"/>
+      <stop offset="1" stop-color="#5B2E93"/>
+    </linearGradient>
+    <linearGradient id="coinGreen" x1="198" y1="118" x2="242" y2="162" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3DB873"/>
+      <stop offset="1" stop-color="#2E9E5B"/>
+    </linearGradient>
+    <linearGradient id="coinOrange" x1="284" y1="104" x2="316" y2="136" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F58C3D"/>
+      <stop offset="1" stop-color="#F07820"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Ombre au sol -->
+  <ellipse cx="248" cy="378" rx="104" ry="13" fill="#4A2478" opacity="0.10"/>
+
+  <!-- Barres de croissance (décor) -->
+  <rect x="86" y="296" width="24" height="54" rx="7" fill="#1B4DB7" opacity="0.10"/>
+  <rect x="118" y="266" width="24" height="84" rx="7" fill="#1B4DB7" opacity="0.16"/>
+  <rect x="150" y="232" width="24" height="118" rx="7" fill="#1B4DB7" opacity="0.22"/>
+  <path d="M150 224 L188 190" stroke="#2E9E5B" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+  <path d="M188 190 L188 202 M188 190 L176 190" stroke="#2E9E5B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
+
+  <!-- Coffre d'épargne -->
+  <rect x="170" y="190" width="190" height="160" rx="32" fill="url(#vaultGrad)"/>
+  <rect x="196" y="204" width="138" height="10" rx="5" fill="#ffffff" opacity="0.08"/>
+
+  <!-- Fente d'insertion -->
+  <ellipse cx="265" cy="226" rx="36" ry="8" fill="#3D1F63"/>
+
+  <!-- Cadran central -->
+  <circle cx="265" cy="300" r="30" fill="#ffffff" opacity="0.14"/>
+  <circle cx="265" cy="300" r="19" fill="#3D6FD4"/>
+  <path d="M265 300 L265 285" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="265" cy="300" r="3.5" fill="#ffffff"/>
+
+  <!-- Pièces qui tombent automatiquement -->
+  <circle cx="220" cy="140" r="22" fill="url(#coinGreen)"/>
+  <circle cx="220" cy="140" r="14" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.45"/>
+  <path d="M204 108 L196 92" stroke="#6B35A8" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 8" opacity="0.35"/>
+
+  <circle cx="304" cy="122" r="15" fill="url(#coinOrange)"/>
+  <circle cx="304" cy="122" r="9" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.45"/>
+  <path d="M314 98 L320 84" stroke="#6B35A8" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 7" opacity="0.3"/>
+
+  <circle cx="342" cy="168" r="10" fill="#3D6FD4" opacity="0.9"/>
+
+  <!-- Badge « automatique » -->
+  <circle cx="354" cy="196" r="32" fill="#4A2478" opacity="0.12"/>
+  <circle cx="352" cy="192" r="30" fill="#ffffff"/>
+  <circle cx="352" cy="192" r="13" fill="none" stroke="#2E9E5B" stroke-width="3.5" stroke-dasharray="6 5" stroke-linecap="round"/>
+  <path d="M352 176 L358 182 L349 185 Z" fill="#2E9E5B"/>
+
+  <!-- Étincelles décoratives -->
+  <path d="M96 84 L98.5 91.5 L106 94 L98.5 96.5 L96 104 L93.5 96.5 L86 94 L93.5 91.5 Z" fill="#6B35A8" opacity="0.55"/>
+  <path d="M404 268 L406 274 L412 276 L406 278 L404 284 L402 278 L396 276 L402 274 Z" fill="#3D6FD4" opacity="0.5"/>
+  <path d="M336 356 L337.4 360.4 L341.8 361.8 L337.4 363.2 L336 367.6 L334.6 363.2 L330.2 361.8 L334.6 360.4 Z" fill="#2E9E5B" opacity="0.55"/>
+</svg>

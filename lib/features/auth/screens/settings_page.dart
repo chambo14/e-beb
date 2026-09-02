@@ -1,11 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../presentation/providers/auth_controller.dart';
+import '../../../presentation/providers/notification_providers.dart';
+import '../../../presentation/providers/session_provider.dart';
+import '../../home/screens/comptes_mobile_money_screen.dart';
+import '../../home/screens/page_contenu_screen.dart';
+import '../../notifications/screens/notifications_screen.dart';
+import '../../support/screens/support_screen.dart';
+import 'profil_edit_sheet.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
+  void _profilVerrouille(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Vos documents sont en cours de vérification. '
+          'Cette action sera disponible une fois votre compte activé.',
+        ),
+        backgroundColor: AppColors.orange,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(10))),
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final nonLues = ref.watch(nombreNotificationsNonLuesProvider);
+    final compteActif = ref.watch(utilisateurCourantProvider)?.estActif ?? true;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -35,27 +62,46 @@ class SettingsPage extends StatelessWidget {
               _buildSectionTitle('Général'),
               const SizedBox(height: 12),
               _buildSettingItem(
-                icon: Icons.share_outlined,
-                title: 'Inviter un ami à rejoindre Ebeb',
-                onTap: () {
-                  // Logique de partage d'invitation
-                },
+                icon: Icons.person_outline_rounded,
+                title: 'Modifier mes informations',
+                subtitle: compteActif
+                    ? 'Email, adresse, situation familiale'
+                    : 'Vérification des documents en cours',
+                verrouille: !compteActif,
+                onTap: compteActif
+                    ? () => showModalBottomSheet<void>(
+                          context: context,
+                          isScrollControlled: true,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(24),
+                            ),
+                          ),
+                          builder: (_) => const ProfilEditSheet(),
+                        )
+                    : () => _profilVerrouille(context),
               ),
               _buildDivider(),
               _buildSettingItem(
-                icon: Icons.percent_rounded,
-                title: 'Vos taux',
-                onTap: () {
-                  // Redirection vers la configuration des taux
-                },
+                icon: Icons.account_balance_wallet_outlined,
+                title: 'Comptes',
+                subtitle: 'Comptes mobile money associés',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ComptesMobileMoneyScreen(),
+                  ),
+                ),
               ),
               _buildDivider(),
               _buildSettingItem(
-                icon: Icons.location_on_outlined,
-                title: 'Trouvez les agents à proximité',
-                onTap: () {
-                  // Logique de géolocalisation des agents
-                },
+                icon: Icons.notifications_none_rounded,
+                title: 'Notifications',
+                trailingText: nonLues > 0 ? '$nonLues non lues' : null,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen(),
+                  ),
+                ),
               ),
 
               const SizedBox(height: 32),
@@ -64,54 +110,49 @@ class SettingsPage extends StatelessWidget {
               _buildSectionTitle('Sécurité & Support'),
               const SizedBox(height: 12),
               _buildSettingItem(
+                icon: Icons.lock_outline_rounded,
+                title: 'Modifiez votre code secret',
+                subtitle: 'Code PIN à 6 chiffres',
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                  ),
+                  builder: (_) => const CodePinEditSheet(),
+                ),
+              ),
+              _buildDivider(),
+              _buildSettingItem(
                 icon: Icons.help_outline_rounded,
                 title: "Support",
                 subtitle: "Contactez le service d'aide utilisateur",
-                onTap: () {
-                  // Ouverture du canal de support
-                },
-              ),
-              _buildDivider(),
-              _buildSettingItem(
-                icon: Icons.devices_rounded,
-                title: 'Vos appareils connectés',
-                trailingText: '1 appareil', // Issu du document d'analyse
-                onTap: () {
-                  // Gestion des sessions / appareils connectés
-                },
-              ),
-              _buildDivider(),
-              _buildSettingItem(
-                icon: Icons.lock_outline_rounded,
-                title: 'Modifiez votre code secret',
-                onTap: () {
-                  // Changement de code secret PIN
-                },
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SupportScreen()),
+                ),
               ),
 
               const SizedBox(height: 40),
 
-              // ─── Boutons d'action de déconnexion / Clôture ────────────────
+              // ─── Déconnexion ──────────────────────────────────────────────
               _buildSettingItem(
                 icon: Icons.logout_rounded,
                 title: 'Se déconnecter',
                 titleColor: Colors.orange.shade800,
                 iconColor: Colors.orange.shade800,
                 showTrailing: false,
-                onTap: () {
-                  // Code de déconnexion de la session
-                },
-              ),
-              _buildDivider(),
-              _buildSettingItem(
-                icon: Icons.delete_forever_outlined,
-                title: 'Fermer mon compte Ebeb',
-                titleColor: Colors.red.shade700,
-                iconColor: Colors.red.shade700,
-                showTrailing: false,
-                onTap: () {
-                  // Procédure de suppression du compte utilisateur
-                },
+                // La redirection est prise en charge par HomeScreen, qui écoute
+                // l'état de session et remplace toute la pile de navigation
+                // (pushAndRemoveUntil) dès qu'elle passe à non-authentifié.
+                // Ne PAS dépiler ici en plus : selon l'ordre d'exécution, ce
+                // pop peut arriver après que la pile a déjà été remplacée par
+                // le seul écran de connexion, et planter en tentant de
+                // dépiler la dernière route restante.
+                onTap: () => ref
+                    .read(authControllerProvider.notifier)
+                    .seDeconnecter(),
               ),
 
               const SizedBox(height: 48),
@@ -132,9 +173,17 @@ class SettingsPage extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _buildFooterLink('Conditions Générales'),
+                        _buildFooterLink(
+                          context,
+                          'Conditions Générales',
+                          type: 'CGU',
+                        ),
                         Text(' • ', style: TextStyle(color: Colors.grey.shade400)),
-                        _buildFooterLink('Avis de Confidentialité'),
+                        _buildFooterLink(
+                          context,
+                          'Avis de Confidentialité',
+                          type: 'POLITIQUE_CONFIDENTIALITE',
+                        ),
                       ],
                     ),
                   ],
@@ -178,6 +227,7 @@ class SettingsPage extends StatelessWidget {
     Color? titleColor,
     Color? iconColor,
     bool showTrailing = true,
+    bool verrouille = false,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -189,7 +239,9 @@ class SettingsPage extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: iconColor ?? AppColors.textSecondary,
+              color: verrouille
+                  ? AppColors.textHint
+                  : (iconColor ?? AppColors.textSecondary),
               size: 22,
             ),
             const SizedBox(width: 16),
@@ -202,7 +254,9 @@ class SettingsPage extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: titleColor ?? AppColors.textPrimary,
+                      color: verrouille
+                          ? AppColors.textHint
+                          : (titleColor ?? AppColors.textPrimary),
                     ),
                   ),
                   if (subtitle != null) ...[
@@ -218,6 +272,9 @@ class SettingsPage extends StatelessWidget {
                 ],
               ),
             ),
+            if (verrouille)
+              const Icon(Icons.lock_outline_rounded,
+                  color: AppColors.textHint, size: 18),
             if (trailingText != null)
               Text(
                 trailingText,
@@ -242,11 +299,13 @@ class SettingsPage extends StatelessWidget {
   }
 
   // Lien cliquable pour le pied de page
-  Widget _buildFooterLink(String text) {
+  Widget _buildFooterLink(BuildContext context, String text, {required String type}) {
     return GestureDetector(
-      onTap: () {
-        // Redirection vers la vue web ou document légal associé
-      },
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PageContenuScreen(type: type, titreEcran: text),
+        ),
+      ),
       child: Text(
         text,
         style: TextStyle(

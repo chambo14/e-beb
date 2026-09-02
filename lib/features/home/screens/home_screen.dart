@@ -1,40 +1,95 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/models/user_model.dart';
+import '../../../presentation/providers/session_provider.dart';
+import '../../auth/screens/phone_input_screen.dart';
 import '../tabs/accueil_tab.dart';
 import '../tabs/cotisations_tab.dart';
 import '../tabs/epargne_tab.dart';
 import '../tabs/profil_tab.dart';
 import '../tabs/taux_tab.dart';
 
-class HomeScreen extends StatefulWidget {
-  final UserModel user;
+class HomeScreen extends ConsumerStatefulWidget {
+  /// `true` juste après la finalisation de l'inscription : affiche un message
+  /// de bienvenue une seule fois, à la première entrée dans l'application.
+  final bool afficherBienvenue;
 
-  const HomeScreen({super.key, this.user = UserModel.demo});
+  const HomeScreen({super.key, this.afficherBienvenue = false});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
+  bool _bienvenueAffichee = false;
 
-  late final List<Widget> _tabs;
+  static const _tabs = [
+    AccueilTab(),
+    TauxTab(),
+    CotisationsTab(),
+    EpargneTab(),
+    ProfilTab(),
+  ];
 
-  @override
-  void initState() {
-    super.initState();
-    _tabs = [
-      AccueilTab(user: widget.user),
-      TauxTab(user: widget.user),
-      CotisationsTab(user: widget.user),
-      EpargneTab(user: widget.user),
-      ProfilTab(user: widget.user),
-    ];
+  void _afficherMessageBienvenue() {
+    if (_bienvenueAffichee || !widget.afficherBienvenue) return;
+    _bienvenueAffichee = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          icon: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: AppColors.primaryBlue.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.celebration_rounded,
+                color: AppColors.primaryBlue, size: 28),
+          ),
+          title: const Text(
+            'Bienvenue sur Ebeb Finance',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+          ),
+          content: const Text(
+            'Votre inscription est enregistrée. Vos documents sont '
+            'actuellement en cours de vérification par notre équipe — vous '
+            'serez notifié dès que votre compte sera activé.',
+            textAlign: TextAlign.center,
+            style: TextStyle(height: 1.5),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(140, 46)),
+              child: const Text('Compris'),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    _afficherMessageBienvenue();
+
+    // Une session invalidée (déconnexion, jeton expiré) ramène à la connexion.
+    ref.listen(sessionProvider, (precedent, courant) {
+      if (precedent?.estAuthentifie == true && !courant.estAuthentifie) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const PhoneInputScreen()),
+          (route) => false,
+        );
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: IndexedStack(index: _currentIndex, children: _tabs),
