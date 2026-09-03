@@ -32,6 +32,12 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# local_auth_windows (et tout autre plugin utilisant <experimental/coroutine>)
+# échoue à la compilation avec les toolchains MSVC récents, qui transforment
+# l'avertissement de dépréciation en erreur bloquante (STL1011). Le message
+# d'erreur du compilateur indique lui-même cette macro comme solution.
+add_definitions(-D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by

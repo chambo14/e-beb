@@ -16,6 +16,7 @@ import '../../../presentation/providers/transaction_providers.dart';
 import '../../../presentation/providers/utilisateur_providers.dart';
 import '../../auth/screens/settings_page.dart';
 import '../../notifications/screens/notifications_screen.dart';
+import '../../paiements/screens/paiement_qr_screen.dart';
 import '../../paiements/screens/scanner_qr_screen.dart';
 import '../screens/recapitulatif_general_screen.dart';
 import '../screens/toutes_transactions_screen.dart';
@@ -1086,130 +1087,6 @@ class _CarteAucunCompte extends StatelessWidget {
   }
 }
 
-// ─── Choix : afficher son QR code ou en scanner un ────────────────────────────
-
-enum _OptionQr { afficher, scanner }
-
-class _FeuilleOptionsQr extends StatelessWidget {
-  final CompteMobileMoney compte;
-
-  const _FeuilleOptionsQr({required this.compte});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Compte ${compte.operateur}',
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 20),
-            _OptionTile(
-              icone: Icons.qr_code_2_rounded,
-              titre: 'Afficher mon QR code',
-              sousTitre: 'Un autre utilisateur le scanne pour vous payer.',
-              onTap: () => Navigator.of(context).pop(_OptionQr.afficher),
-            ),
-            const SizedBox(height: 12),
-            _OptionTile(
-              icone: Icons.qr_code_scanner_rounded,
-              titre: 'Scanner un QR code',
-              sousTitre: 'Payez un compte ${compte.operateur} compatible.',
-              onTap: () => Navigator.of(context).pop(_OptionQr.scanner),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OptionTile extends StatelessWidget {
-  final IconData icone;
-  final String titre;
-  final String sousTitre;
-  final VoidCallback onTap;
-
-  const _OptionTile({
-    required this.icone,
-    required this.titre,
-    required this.sousTitre,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.inputFill,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppColors.primaryBlue.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icone, color: AppColors.primaryBlue, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    titre,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    sousTitre,
-                    style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textHint, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ─── Carte d'un compte ────────────────────────────────────────────────────────
 
 class _NetworkCard extends StatelessWidget {
@@ -1237,32 +1114,6 @@ class _NetworkCard extends StatelessWidget {
     );
   }
 
-  void _scannerUnQrCode(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => ScannerQrScreen(compteSource: compte)),
-    );
-  }
-
-  /// Sur le modèle Wave : un tap sur la carte propose de recevoir (afficher
-  /// son propre code) ou de payer (scanner celui d'un tiers) — plutôt que de
-  /// n'ouvrir que l'affichage, comme auparavant.
-  Future<void> _ouvrirOptions(BuildContext context) async {
-    final choix = await showModalBottomSheet<_OptionQr>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => _FeuilleOptionsQr(compte: compte),
-    );
-    if (choix == null || !context.mounted) return;
-    switch (choix) {
-      case _OptionQr.afficher:
-        _afficherMonQrCode(context);
-      case _OptionQr.scanner:
-        _scannerUnQrCode(context);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1271,7 +1122,7 @@ class _NetworkCard extends StatelessWidget {
     final qr = compte.qrPayload;
 
     return GestureDetector(
-      onTap: qr == null ? null : () => _ouvrirOptions(context),
+      onTap: qr == null ? null : () => _afficherMonQrCode(context),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
@@ -1445,13 +1296,36 @@ class _LogoMoyen extends StatelessWidget {
 
 // ─── Page QR scan plein écran ─────────────────────────────────────────────────
 
-class _QrScanPage extends StatelessWidget {
+enum _ModeQr { carte, scanner }
+
+/// Écran QR de l'accueil : affiche directement le QR code du compte (mode
+/// « Ma carte »), avec une bascule en bas pour passer en mode « Scanner un
+/// code » — sur le même écran, sans navigation séparée — et payer un compte
+/// compatible.
+class _QrScanPage extends ConsumerStatefulWidget {
   final CompteMobileMoney compte;
 
   const _QrScanPage({required this.compte});
 
   @override
+  ConsumerState<_QrScanPage> createState() => _QrScanPageState();
+}
+
+class _QrScanPageState extends ConsumerState<_QrScanPage> {
+  _ModeQr _mode = _ModeQr.carte;
+
+  // La caméra n'est créée (et démarrée — `autoStart` par défaut) que lorsque
+  // [ScannerQrCorps] est effectivement construit ci-dessous, et libérée
+  // (`dispose`) dès qu'on bascule sur « Ma carte » : pas besoin de piloter
+  // manuellement son démarrage/arrêt ici.
+  void _basculer(_ModeQr nouveauMode) {
+    if (nouveauMode == _mode) return;
+    setState(() => _mode = nouveauMode);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final compte = widget.compte;
     final couleur =
         _couleurDepuisHex(compte.moyenPaiement?.couleur) ?? AppColors.primaryBlue;
     final qr = compte.qrPayload;
@@ -1514,110 +1388,193 @@ class _QrScanPage extends StatelessWidget {
                     ),
                   ),
 
-                  const Spacer(),
-
-                  // Instruction haut
-                  Text(
-                    'Présentez ce code à l\'opérateur',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // QR code
-                  Container(
-                    width: 300,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-                          child: qr == null
-                              ? const SizedBox(
-                                  width: 260,
-                                  height: 260,
-                                  child: Center(
-                                    child: Icon(Icons.qr_code_2_rounded,
-                                        color: AppColors.textHint, size: 64),
+                  Expanded(
+                    child: _mode == _ModeQr.scanner
+                        ? ScannerQrCorps(
+                            compteSource: compte,
+                            onIdentifie: (destinataire, qrScanne) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => PaiementQrScreen(
+                                    compteSource: compte,
+                                    destinataire: destinataire,
+                                    qrScanne: qrScanne,
                                   ),
-                                )
-                              : QrImageView(
-                                  data: qr,
-                                  version: QrVersions.auto,
-                                  size: 260,
-                                  eyeStyle: const QrEyeStyle(
-                                    eyeShape: QrEyeShape.square,
-                                    color: Colors.black,
-                                  ),
-                                  dataModuleStyle: const QrDataModuleStyle(
-                                    dataModuleShape: QrDataModuleShape.square,
-                                    color: Colors.black,
-                                  ),
-                                  backgroundColor: Colors.white,
                                 ),
-                        ),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: const BorderRadius.vertical(
-                              bottom: Radius.circular(24),
-                            ),
-                          ),
-                          child: Row(
+                              );
+                            },
+                          )
+                        : Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.camera_alt_rounded,
-                                  size: 16, color: Colors.grey.shade600),
-                              const SizedBox(width: 6),
+                              // Instruction haut
                               Text(
-                                'Scanner pour recevoir',
+                                'Présentez ce code à l\'opérateur',
                                 style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade600,
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+
+                              // QR code
+                              Container(
+                                width: 300,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                                      child: qr == null
+                                          ? const SizedBox(
+                                              width: 260,
+                                              height: 260,
+                                              child: Center(
+                                                child: Icon(Icons.qr_code_2_rounded,
+                                                    color: AppColors.textHint, size: 64),
+                                              ),
+                                            )
+                                          : QrImageView(
+                                              data: qr,
+                                              version: QrVersions.auto,
+                                              size: 260,
+                                              eyeStyle: const QrEyeStyle(
+                                                eyeShape: QrEyeShape.square,
+                                                color: Colors.black,
+                                              ),
+                                              dataModuleStyle: const QrDataModuleStyle(
+                                                dataModuleShape: QrDataModuleShape.square,
+                                                color: Colors.black,
+                                              ),
+                                              backgroundColor: Colors.white,
+                                            ),
+                                    ),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade100,
+                                        borderRadius: const BorderRadius.vertical(
+                                          bottom: Radius.circular(24),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.camera_alt_rounded,
+                                              size: 16, color: Colors.grey.shade600),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'Scanner pour recevoir',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // Numéro du compte
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 20, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  compte.numeroCompte,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.5,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
-                    ),
                   ),
 
-                  const SizedBox(height: 24),
-
-                  // Numéro du compte
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      compte.numeroCompte,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5,
+                  // Bascule Scanner un code / Ma carte.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: Row(
+                        children: [
+                          _SegmentBascule(
+                            libelle: 'Scanner un code',
+                            selectionne: _mode == _ModeQr.scanner,
+                            onTap: () => _basculer(_ModeQr.scanner),
+                          ),
+                          _SegmentBascule(
+                            libelle: 'Ma carte',
+                            selectionne: _mode == _ModeQr.carte,
+                            onTap: () => _basculer(_ModeQr.carte),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-
-                  const Spacer(),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SegmentBascule extends StatelessWidget {
+  final String libelle;
+  final bool selectionne;
+  final VoidCallback onTap;
+
+  const _SegmentBascule({
+    required this.libelle,
+    required this.selectionne,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selectionne ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Text(
+            libelle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: selectionne ? AppColors.textPrimary : Colors.white,
+            ),
+          ),
         ),
       ),
     );

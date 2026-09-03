@@ -62,6 +62,14 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   /// Détecte la disponibilité du capteur puis, si présent, déclenche
   /// automatiquement la demande d'authentification — comme sur les
   /// applications bancaires, à l'ouverture de l'écran de verrouillage.
+  ///
+  /// Ce verrou apparaît précisément quand l'application passe en arrière-plan
+  /// (voir `EbebApp.didChangeAppLifecycleState`) : `initState` peut donc
+  /// démarrer alors que l'application n'est pas encore réellement au premier
+  /// plan. On ne déclenche l'authentification auto que si `resumed` est déjà
+  /// atteint au moment où ces vérifications asynchrones se terminent — sinon
+  /// l'icône d'empreinte reste disponible pour une relance manuelle une fois
+  /// l'utilisateur effectivement revenu sur l'écran (voir `_authentifierParBiometrie`).
   Future<void> _initBiometrie() async {
     bool disponible;
     try {
@@ -75,18 +83,30 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     if (!mounted) return;
     setState(() => _biometrieDisponible = disponible);
 
-    if (disponible) _authentifierParBiometrie();
+    if (disponible) _authentifierParBiometrie(auto: true);
   }
 
-  Future<void> _authentifierParBiometrie() async {
+  Future<void> _authentifierParBiometrie({bool auto = false}) async {
     if (_enCours || !_biometrieDisponible) return;
+
+    // Ne jamais déclencher automatiquement l'invite biométrique tant que
+    // l'application n'est pas réellement au premier plan : sinon le système
+    // peut la conserver « en attente » et l'afficher plus tard, à un moment
+    // où l'utilisateur ne l'attend plus — l'invite native reste alors
+    // affichée par-dessus l'application sans qu'aucune interaction Flutter
+    // ne l'indique, ce qui donne l'impression d'une interface figée. Une
+    // relance manuelle (tap sur l'icône) reste toujours autorisée : à ce
+    // moment l'utilisateur est nécessairement déjà au premier plan.
+    if (auto &&
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
 
     try {
       final reussie = await _localAuth.authenticate(
         localizedReason:
             'Authentifiez-vous pour accéder à votre espace Ebeb Finance',
         biometricOnly: true,
-        persistAcrossBackgrounding: true,
       );
 
       if (!mounted || !reussie) return;
