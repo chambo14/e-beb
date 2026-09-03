@@ -56,6 +56,26 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   @override
   void initState() {
     super.initState();
+    // Ce widget n'est plus recréé à chaque verrouillage (voir main.dart : le
+    // Navigator qui l'héberge reste monté en permanence, seule sa visibilité
+    // change) — `initState` ne couvre donc que le cas où l'application est
+    // déjà verrouillée au moment où cet écran est construit pour la toute
+    // première fois (ex. démarrage à froid avec un jeton encore valide). Les
+    // verrouillages suivants sont détectés dans `build` via `ref.listen`.
+    if (ref.read(sessionProvider).verrouille) {
+      _initBiometrie();
+    }
+  }
+
+  /// Réinitialise l'écran à chaque nouveau verrouillage (code PIN et erreur
+  /// effacés, disponibilité biométrique re-vérifiée) — sans cela, le widget
+  /// persistant réafficherait l'état laissé par le cycle précédent.
+  void _surNouveauVerrouillage() {
+    setState(() {
+      _pin = '';
+      _erreur = null;
+      _enCours = false;
+    });
     _initBiometrie();
   }
 
@@ -64,7 +84,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   /// applications bancaires, à l'ouverture de l'écran de verrouillage.
   ///
   /// Ce verrou apparaît précisément quand l'application passe en arrière-plan
-  /// (voir `EbebApp.didChangeAppLifecycleState`) : `initState` peut donc
+  /// (voir `EbebApp.didChangeAppLifecycleState`) : cet appel peut donc
   /// démarrer alors que l'application n'est pas encore réellement au premier
   /// plan. On ne déclenche l'authentification auto que si `resumed` est déjà
   /// atteint au moment où ces vérifications asynchrones se terminent — sinon
@@ -223,6 +243,12 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   @override
   Widget build(BuildContext context) {
     final utilisateur = ref.watch(utilisateurCourantProvider);
+
+    ref.listen(sessionProvider, (precedent, courant) {
+      if (precedent?.verrouille != true && courant.verrouille) {
+        _surNouveauVerrouillage();
+      }
+    });
 
     return PopScope(
       // On ne quitte jamais l'écran de verrouillage avec le bouton retour :

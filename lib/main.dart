@@ -30,6 +30,13 @@ class EbebApp extends ConsumerStatefulWidget {
 }
 
 class _EbebAppState extends ConsumerState<EbebApp> with WidgetsBindingObserver {
+  // Le Navigator imbriqué du verrou reste monté en permanence une fois la
+  // session authentifiée (voir `builder` ci-dessous) : cette clé permet de
+  // remettre sa pile de routes à zéro à chaque nouveau verrouillage, au cas
+  // où un parcours secondaire (« code PIN oublié ») serait resté ouvert d'un
+  // cycle précédent.
+  final _lockNavigatorKey = GlobalKey<NavigatorState>();
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +61,18 @@ class _EbebAppState extends ConsumerState<EbebApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // Nouveau verrouillage : remet la pile du Navigator imbriqué du verrou à
+    // son seul écran de base (LockScreen) — voir le commentaire détaillé
+    // plus bas, près de sa déclaration. `ref.listen` doit être appelé ici,
+    // directement dans `build`, et non dans le callback `builder` de
+    // `MaterialApp` ci-dessous : celui-ci s'exécute plus tard, au sein d'un
+    // `Builder` imbriqué distinct, hors du build de ce widget.
+    ref.listen(sessionProvider, (precedent, courant) {
+      if (precedent?.verrouille != true && courant.verrouille) {
+        _lockNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+      }
+    });
+
     return MaterialApp(
       title: 'Ebeb Finance',
       debugShowCheckedModeBanner: false,
@@ -130,6 +149,7 @@ class _EbebAppState extends ConsumerState<EbebApp> with WidgetsBindingObserver {
       home: const SplashScreen(),
       builder: (context, child) {
         final session = ref.watch(sessionProvider);
+
         return Stack(
           children: [
             if (child != null) child,
@@ -140,11 +160,28 @@ class _EbebAppState extends ConsumerState<EbebApp> with WidgetsBindingObserver {
             // `child`), pas en dessous, donc sans lui `Navigator.of(context)`
             // et `showDialog(...)` depuis LockScreen (ex. le parcours « code
             // PIN oublié ») ne trouveraient aucun Navigator ancêtre.
-            if (session.estAuthentifie && session.verrouille)
+            //
+            // Monté une seule fois pour toute la durée de la session
+            // authentifiée (jamais démonté/recréé à chaque cycle
+            // verrou/déverrou) — seule sa visibilité change, via `Offstage`.
+            // Le retirer/rajouter dynamiquement à l'arbre exposait une
+            // course : si `deverrouiller()` s'exécutait pendant qu'une
+            // transition de route de ce Navigator était encore en vol (le
+            // déverrouillage biométrique peut aboutir en quelques dizaines de
+            // ms), le callback de fin de transition s'exécutait ensuite sur
+            // un Navigator déjà démonté et levait `Hero: navigator != null` /
+            // `Navigator: !_debugLocked` — une exception non interceptée qui
+            // corrompt l'arène de gestes de Flutter et fige l'application.
+            if (session.estAuthentifie)
               Positioned.fill(
-                child: Navigator(
-                  onGenerateRoute: (_) =>
-                      MaterialPageRoute(builder: (_) => const LockScreen()),
+                child: Offstage(
+                  offstage: !session.verrouille,
+                  child: Navigator(
+                    key: _lockNavigatorKey,
+                    onGenerateRoute: (_) => MaterialPageRoute(
+                      builder: (_) => const LockScreen(),
+                    ),
+                  ),
                 ),
               ),
           ],
